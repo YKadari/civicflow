@@ -1,0 +1,9 @@
+[project]
+name = "civicflow"
+version = "0.1.0"
+description = "Policy-aware case management platform with decision challenge and policy replay."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]
