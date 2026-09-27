@@ -5,10 +5,40 @@ import pytest
 
 from app.ai.factory import get_ai_provider
 from app.ai.models import IntentClassification
+
+from app.domain.models import PolicyEvidence
+from app.policies.factory import (
+    get_policy_retriever,
+)
 pytestmark = pytest.mark.usefixtures("seeded_database")
 
 client = TestClient(app)
+class FakePolicyRetriever:
+    def retrieve(
+        self,
+        query: str,
+        limit: int = 3,
+    ) -> list[PolicyEvidence]:
 
+        return [
+            PolicyEvidence(
+                chunk_id="HA-PAY-V1-4_2",
+                policy_id="HA-PAY",
+                version=1,
+                section="4.2 Missing Payments",
+                content=(
+                    "If a scheduled payment has not "
+                    "been received within five "
+                    "business days, a payment-status "
+                    "investigation may be opened."
+                ),
+                similarity=0.90,
+            )
+        ]
+
+
+def override_policy_retriever():
+    return FakePolicyRetriever()
 class FakeAIProvider:
     def classify_intent(
         self,

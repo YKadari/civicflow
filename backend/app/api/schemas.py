@@ -51,15 +51,6 @@ class ApprovalResponse(BaseModel):
     reviewer: str | None
 
 
-class CaseContextResponse(BaseModel):
-    case: CaseResponse
-    citizen: CitizenResponse
-    payments: list[PaymentResponse]
-    documents: list[DocumentResponse]
-    events: list[CaseEventResponse]
-    approvals: list[ApprovalResponse]
-
-
 class CitizenRequestCreate(BaseModel):
     description: str
 
@@ -70,8 +61,18 @@ class CitizenRequestResponse(BaseModel):
     description: str | None
     created_at: datetime
 
+
 class AnalyzeCaseRequest(BaseModel):
     event_id: str
+
+
+class PolicyEvidenceResponse(BaseModel):
+    chunk_id: str
+    policy_id: str
+    version: int
+    section: str
+    content: str
+    similarity: float
 
 
 class CaseAnalysisResponse(BaseModel):
@@ -79,8 +80,16 @@ class CaseAnalysisResponse(BaseModel):
     request_type: str
     facts: list[str]
     recommended_action: str | None
-
     classification_confidence: float | None = None
     classification_source: str
-
     requires_human_review: bool
+    policy_evidence: list[PolicyEvidenceResponse]
+
+
+class CaseContextResponse(BaseModel):
+    case: CaseResponse
+    citizen: CitizenResponse
+    payments: list[PaymentResponse]
+    documents: list[DocumentResponse]
+    events: list[CaseEventResponse]
+    approvals: list[ApprovalResponse]

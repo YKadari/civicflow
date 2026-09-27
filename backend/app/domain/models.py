@@ -104,6 +104,14 @@ class CaseContext:
     approvals: list[Approval]
 
 @dataclass
+class PolicyEvidence:
+    chunk_id: str
+    policy_id: str
+    version: int
+    section: str
+    content: str
+    similarity: float
+@dataclass
 class CaseAnalysis:
     case_id: str
     request_type: str
@@ -112,6 +120,9 @@ class CaseAnalysis:
     classification_confidence: float | None = None
     classification_source: str = "ai"
     requires_human_review: bool = False
+    policy_evidence: list[PolicyEvidence] = field(
+        default_factory=list
+    )
 
 @dataclass
 class Policy:
@@ -120,11 +131,3 @@ class Policy:
     version: int
     effective_date: date
     content: str
-@dataclass
-class PolicyEvidence:
-    chunk_id: str
-    policy_id: str
-    version: int
-    section: str
-    content: str
-    similarity: float

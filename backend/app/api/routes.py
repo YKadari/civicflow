@@ -14,6 +14,7 @@ from app.api.schemas import (
     CitizenRequestResponse,
     AnalyzeCaseRequest,
     CaseAnalysisResponse,
+    PolicyEvidenceResponse,
 )
 from app.database.repository import (
     create_case_request,
@@ -22,6 +23,10 @@ from app.database.repository import (
 )
 
 from app.services.analysis import analyze_case_request
+from app.policies.base import PolicyRetriever
+from app.policies.factory import (
+    get_policy_retriever,
+)
 
 router = APIRouter()
 
@@ -156,12 +161,16 @@ def analyze_request(
     ai_provider: AIProvider = Depends(
         get_ai_provider
     ),
+    policy_retriever: PolicyRetriever = Depends(
+        get_policy_retriever
+    ),
 ):
     analysis = analyze_case_request(
-        case_id=case_id,
-        event_id=request.event_id,
-        ai_provider=ai_provider,
-    )
+    case_id=case_id,
+    event_id=request.event_id,
+    ai_provider=ai_provider,
+    policy_retriever=policy_retriever,
+)
 
     if analysis is None:
         raise HTTPException(
@@ -170,6 +179,17 @@ def analyze_request(
         )
 
     return CaseAnalysisResponse(
+        policy_evidence=[
+            PolicyEvidenceResponse(
+                chunk_id=evidence.chunk_id,
+                policy_id=evidence.policy_id,
+                version=evidence.version,
+                section=evidence.section,
+                content=evidence.content,
+                similarity=evidence.similarity,
+            )
+            for evidence in analysis.policy_evidence
+        ],  
     case_id=analysis.case_id,
     request_type=analysis.request_type,
     facts=analysis.facts,

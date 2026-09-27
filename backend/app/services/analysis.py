@@ -11,6 +11,7 @@ from app.ai.base import AIProvider
 import os
 from app.ai.exceptions import AIProviderError
 from app.ai.models import IntentClassification
+from app.policies.base import PolicyRetriever
 
 
 AI_CONFIDENCE_THRESHOLD = float(
@@ -58,6 +59,7 @@ def analyze_case_request(
     case_id: str,
     event_id: str,
     ai_provider: AIProvider,
+    policy_retriever: PolicyRetriever,
 ) -> CaseAnalysis | None:
 
     context = get_case_context(case_id)
@@ -88,6 +90,17 @@ def analyze_case_request(
         classification_source = "fallback"
 
     request_type = classification.request_type
+
+    policy_query = (
+    f"Citizen request: {description}\n"
+    f"Request type: {request_type}"
+    )
+
+    policy_evidence = policy_retriever.retrieve(
+        query=policy_query,
+        limit=3,
+    )
+    
 
     requires_human_review = (
         classification_source == "fallback"
@@ -136,6 +149,8 @@ def analyze_case_request(
     # IMPORTANT: this must happen AFTER action selection
     if requires_human_review:
         recommended_action = None
+    if not policy_evidence:
+        requires_human_review = True
 
     return CaseAnalysis(
         case_id=case_id,
@@ -147,4 +162,5 @@ def analyze_case_request(
         ),
         classification_source=classification_source,
         requires_human_review=requires_human_review,
+        policy_evidence=policy_evidence,
     )
