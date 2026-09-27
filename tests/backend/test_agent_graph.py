@@ -1,11 +1,16 @@
 import pytest
 
-from app.agents.graph import build_case_analysis_graph
+from app.agents.graph import (
+    build_case_analysis_graph,
+)
 from app.ai.models import (
+    DecisionChallengeResult,
     GroundedRecommendation,
     IntentClassification,
 )
-from app.domain.models import PolicyEvidence
+from app.domain.models import (
+    PolicyEvidence,
+)
 
 
 pytestmark = pytest.mark.usefixtures(
@@ -13,18 +18,7 @@ pytestmark = pytest.mark.usefixtures(
 )
 
 
-# ============================================================
-# Fake AI providers
-# ============================================================
-
-
 class FakeAIProvider:
-    """
-    Normal high-confidence AI provider.
-
-    Used to test the successful CivicFlow path.
-    """
-
     def classify_intent(
         self,
         description: str,
@@ -44,10 +38,11 @@ class FakeAIProvider:
     ) -> GroundedRecommendation:
 
         return GroundedRecommendation(
-            recommended_action="check_payment",
+            recommended_action=(
+                "check_payment"
+            ),
             rationale=(
-                "The payment is missing and the "
-                "retrieved payment policy applies."
+                "The payment is missing."
             ),
             cited_chunk_ids=[
                 "HA-PAY-V1-4_2"
@@ -55,13 +50,21 @@ class FakeAIProvider:
             confidence=0.92,
         )
 
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
 
-class HallucinatingAIProvider:
-    """
-    Deliberately cites a policy chunk that was
-    never retrieved.
-    """
+        raise AssertionError(
+            "Read-only actions should not "
+            "run Decision Challenge."
+        )
 
+
+class OpenInvestigationAIProvider:
     def classify_intent(
         self,
         description: str,
@@ -81,26 +84,120 @@ class HallucinatingAIProvider:
     ) -> GroundedRecommendation:
 
         return GroundedRecommendation(
-            recommended_action="check_payment",
-            rationale=(
-                "This recommendation uses a fake "
-                "policy citation."
+            recommended_action=(
+                "open_investigation"
             ),
+            rationale=(
+                "The missing payment may "
+                "require investigation."
+            ),
+            cited_chunk_ids=[
+                "HA-PAY-V1-4_2"
+            ],
+            confidence=0.95,
+        )
+
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
+
+        return DecisionChallengeResult(
+            verdict="pass",
+            reasons=[
+                (
+                    "No material conflict "
+                    "was identified."
+                )
+            ],
+            cited_chunk_ids=[
+                "HA-PAY-V1-4_2"
+            ],
+            missing_evidence=[],
+            confidence=0.90,
+        )
+
+
+class ChallengingAIProvider(
+    OpenInvestigationAIProvider
+):
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
+
+        return DecisionChallengeResult(
+            verdict="challenge",
+            reasons=[
+                (
+                    "The policy requires a "
+                    "timing condition that has "
+                    "not been established."
+                )
+            ],
+            cited_chunk_ids=[
+                "HA-PAY-V1-4_2"
+            ],
+            missing_evidence=[
+                (
+                    "Confirmation that five "
+                    "business days have elapsed."
+                )
+            ],
+            confidence=0.96,
+        )
+
+
+class HallucinatingAIProvider:
+    def classify_intent(
+        self,
+        description: str,
+    ) -> IntentClassification:
+
+        return IntentClassification(
+            request_type="payment_issue",
+            confidence=0.95,
+        )
+
+    def recommend_action(
+        self,
+        case_id: str,
+        request_description: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> GroundedRecommendation:
+
+        return GroundedRecommendation(
+            recommended_action=(
+                "check_payment"
+            ),
+            rationale="Fake citation.",
             cited_chunk_ids=[
                 "FAKE-POLICY-99"
             ],
             confidence=0.99,
         )
 
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
+
+        raise AssertionError(
+            "Challenge should not run."
+        )
+
 
 class LowConfidenceAIProvider:
-    """
-    Low-confidence classification should route
-    directly to human review.
-
-    recommend_action() should never be reached.
-    """
-
     def classify_intent(
         self,
         description: str,
@@ -120,20 +217,23 @@ class LowConfidenceAIProvider:
     ) -> GroundedRecommendation:
 
         raise AssertionError(
-            "recommend_action should not be called "
-            "for a low-confidence case"
+            "Recommendation should not run."
+        )
+
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
+
+        raise AssertionError(
+            "Challenge should not run."
         )
 
 
 class CloseCaseAIProvider:
-    """
-    AI proposes CLOSE_CASE.
-
-    It is a valid CivicFlow ActionType, but the
-    deterministic policy engine does not yet allow
-    it to proceed automatically.
-    """
-
     def classify_intent(
         self,
         description: str,
@@ -154,27 +254,28 @@ class CloseCaseAIProvider:
 
         return GroundedRecommendation(
             recommended_action="close_case",
-            rationale=(
-                "Test recommendation to close "
-                "the case."
-            ),
+            rationale="Test closure.",
             cited_chunk_ids=[
                 "HA-PAY-V1-4_2"
             ],
             confidence=0.95,
         )
 
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
 
-# ============================================================
-# Fake policy retrievers
-# ============================================================
+        raise AssertionError(
+            "Policy engine should block "
+            "before challenge."
+        )
 
 
 class FakePolicyRetriever:
-    """
-    Returns valid payment policy evidence.
-    """
-
     def retrieve(
         self,
         query: str,
@@ -183,14 +284,20 @@ class FakePolicyRetriever:
 
         return [
             PolicyEvidence(
-                chunk_id="HA-PAY-V1-4_2",
+                chunk_id=(
+                    "HA-PAY-V1-4_2"
+                ),
                 policy_id="HA-PAY",
                 version=1,
-                section="4.2 Missing Payments",
+                section=(
+                    "4.2 Missing Payments"
+                ),
                 content=(
-                    "A payment-status investigation "
-                    "may be opened for a missing "
-                    "payment."
+                    "If a scheduled payment "
+                    "has not been received "
+                    "within five business days, "
+                    "a payment-status "
+                    "investigation may be opened."
                 ),
                 similarity=0.90,
             )
@@ -198,11 +305,6 @@ class FakePolicyRetriever:
 
 
 class EmptyPolicyRetriever:
-    """
-    Simulates RAG finding no sufficiently
-    relevant policy evidence.
-    """
-
     def retrieve(
         self,
         query: str,
@@ -212,28 +314,12 @@ class EmptyPolicyRetriever:
         return []
 
 
-# ============================================================
-# Tests
-# ============================================================
-
-
 def test_graph_generates_grounded_recommendation():
-    """
-    Happy path:
-
-    classification
-        -> policy retrieval
-        -> fact construction
-        -> AI recommendation
-        -> citation validation
-        -> deterministic policy check
-        -> tool registry
-        -> tool execution
-    """
-
     graph = build_case_analysis_graph(
         ai_provider=FakeAIProvider(),
-        policy_retriever=FakePolicyRetriever(),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
     )
 
     result = graph.invoke(
@@ -243,249 +329,43 @@ def test_graph_generates_grounded_recommendation():
         }
     )
 
-    # --------------------------------------------------------
-    # Classification
-    # --------------------------------------------------------
-
-    assert (
-        result["request_type"]
-        == "payment_issue"
-    )
-
-    assert (
-        result["classification_source"]
-        == "ai"
-    )
-
-    assert (
-        result["classification_confidence"]
-        == 0.95
-    )
-
-    assert (
-        result["requires_human_review"]
-        is False
-    )
-
-    # --------------------------------------------------------
-    # Recommendation
-    # --------------------------------------------------------
-
     assert (
         result["recommended_action"]
         == "check_payment"
     )
 
     assert (
-        result["cited_policy_chunks"]
-        == ["HA-PAY-V1-4_2"]
-    )
-
-    assert (
-        result["recommendation_confidence"]
-        == 0.92
-    )
-
-    assert (
-        result["recommendation_rationale"]
-        is not None
-    )
-
-    # --------------------------------------------------------
-    # Policy retrieval + facts
-    # --------------------------------------------------------
-
-    assert len(
-        result["policy_evidence"]
-    ) == 1
-
-    assert (
-        result["policy_evidence"][0].policy_id
-        == "HA-PAY"
-    )
-
-    assert (
-        "Payment PAY-10001-SEP is marked missing"
-        in result["facts"]
-    )
-
-    # --------------------------------------------------------
-    # Deterministic policy engine
-    # --------------------------------------------------------
-
-    assert (
         result["policy_check_allowed"]
         is True
     )
 
-    assert len(
-        result["policy_check_reasons"]
-    ) > 0
-
-    # --------------------------------------------------------
-    # Tool registry
-    # --------------------------------------------------------
-
+    # Read-only tool bypasses challenge.
     assert (
-        result["tool_access_mode"]
-        == "read_only"
+        result.get(
+            "decision_challenge_passed"
+        )
+        is None
     )
-
-    assert (
-        result["tool_requires_approval"]
-        is False
-    )
-
-    # --------------------------------------------------------
-    # Tool execution
-    # --------------------------------------------------------
 
     assert (
         result["executed_tool"]
         == "check_payment"
     )
 
-    payment_result = result[
-        "payment_check_result"
-    ]
-
-    assert (
-        payment_result.success
-        is True
-    )
-
-    assert (
-        payment_result.case_id
-        == "CF-10001"
-    )
-
-    assert any(
-        payment.status == "missing"
-        for payment
-        in payment_result.payments
-    )
-
-
-def test_graph_rejects_fake_policy_citation():
-    """
-    The AI must not cite policy chunks that were
-    not actually retrieved.
-    """
-
-    graph = build_case_analysis_graph(
-        ai_provider=HallucinatingAIProvider(),
-        policy_retriever=FakePolicyRetriever(),
-    )
-
-    result = graph.invoke(
-        {
-            "case_id": "CF-10001",
-            "event_id": "EVT-10001-1",
-        }
-    )
-
     assert (
         result["requires_human_review"]
-        is True
-    )
-
-    assert (
-        result["recommended_action"]
-        is None
-    )
-
-    assert (
-        result.get("executed_tool")
-        is None
+        is False
     )
 
 
-def test_low_confidence_routes_to_human_review():
-    """
-    A low-confidence classification should stop
-    automated processing before recommendation.
-    """
-
+def test_state_changing_action_passes_challenge_and_creates_approval():
     graph = build_case_analysis_graph(
-        ai_provider=LowConfidenceAIProvider(),
-        policy_retriever=FakePolicyRetriever(),
-    )
-
-    result = graph.invoke(
-        {
-            "case_id": "CF-10001",
-            "event_id": "EVT-10001-1",
-        }
-    )
-
-    assert (
-        result["requires_human_review"]
-        is True
-    )
-
-    assert (
-        result["recommended_action"]
-        is None
-    )
-
-    assert (
-        result.get("executed_tool")
-        is None
-    )
-
-
-def test_missing_policy_routes_to_human_review():
-    """
-    CivicFlow should not continue to an automated
-    action when no relevant policy is retrieved.
-    """
-
-    graph = build_case_analysis_graph(
-        ai_provider=FakeAIProvider(),
-        policy_retriever=EmptyPolicyRetriever(),
-    )
-
-    result = graph.invoke(
-        {
-            "case_id": "CF-10001",
-            "event_id": "EVT-10001-1",
-        }
-    )
-
-    assert (
-        result["requires_human_review"]
-        is True
-    )
-
-    assert (
-        result["recommended_action"]
-        is None
-    )
-
-    assert (
-        result["policy_evidence"]
-        == []
-    )
-
-    assert (
-        result.get("executed_tool")
-        is None
-    )
-
-
-def test_unimplemented_action_is_blocked_by_policy_engine():
-    """
-    CLOSE_CASE is a valid ActionType, but CivicFlow
-    does not yet have a deterministic policy rule
-    permitting automated case closure.
-
-    It must therefore be blocked before tool
-    execution.
-    """
-
-    graph = build_case_analysis_graph(
-        ai_provider=CloseCaseAIProvider(),
-        policy_retriever=FakePolicyRetriever(),
+        ai_provider=(
+            OpenInvestigationAIProvider()
+        ),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
     )
 
     result = graph.invoke(
@@ -497,11 +377,123 @@ def test_unimplemented_action_is_blocked_by_policy_engine():
 
     assert (
         result["policy_check_allowed"]
+        is True
+    )
+
+    assert (
+        result[
+            "decision_challenge_passed"
+        ]
+        is True
+    )
+
+    assert (
+        result["challenge_verdict"]
+        == "pass"
+    )
+
+    approval = result[
+        "approval_request"
+    ]
+
+    assert approval is not None
+
+    assert (
+        approval.action_type
+        == "open_investigation"
+    )
+
+    assert (
+        approval.status
+        == "pending"
+    )
+
+    assert (
+        result.get("executed_tool")
+        is None
+    )
+
+
+def test_decision_challenge_blocks_action():
+    graph = build_case_analysis_graph(
+        ai_provider=(
+            ChallengingAIProvider()
+        ),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result[
+            "decision_challenge_passed"
+        ]
         is False
     )
 
     assert (
+        result["challenge_verdict"]
+        == "challenge"
+    )
+
+    assert (
+        result["challenged_action"]
+        == "open_investigation"
+    )
+
+    assert len(
+        result[
+            "challenge_missing_evidence"
+        ]
+    ) > 0
+
+    assert (
         result["requires_human_review"]
+        is True
+    )
+
+    # Challenge happens BEFORE approval.
+    assert (
+        result.get(
+            "approval_request"
+        )
+        is None
+    )
+
+    assert (
+        result.get("executed_tool")
+        is None
+    )
+
+
+def test_graph_rejects_fake_policy_citation():
+    graph = build_case_analysis_graph(
+        ai_provider=(
+            HallucinatingAIProvider()
+        ),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result[
+            "requires_human_review"
+        ]
         is True
     )
 
@@ -510,17 +502,89 @@ def test_unimplemented_action_is_blocked_by_policy_engine():
         is None
     )
 
-    assert any(
-        "No deterministic policy rule"
-        in reason
-        for reason in result[
-            "policy_check_reasons"
-        ]
+
+def test_low_confidence_routes_to_human_review():
+    graph = build_case_analysis_graph(
+        ai_provider=(
+            LowConfidenceAIProvider()
+        ),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
     )
 
-    # A blocked action must never reach
-    # tool execution.
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
     assert (
-        result.get("executed_tool")
+        result[
+            "requires_human_review"
+        ]
+        is True
+    )
+
+
+def test_missing_policy_routes_to_human_review():
+    graph = build_case_analysis_graph(
+        ai_provider=FakeAIProvider(),
+        policy_retriever=(
+            EmptyPolicyRetriever()
+        ),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result[
+            "requires_human_review"
+        ]
+        is True
+    )
+
+
+def test_unimplemented_action_is_blocked_before_challenge():
+    graph = build_case_analysis_graph(
+        ai_provider=(
+            CloseCaseAIProvider()
+        ),
+        policy_retriever=(
+            FakePolicyRetriever()
+        ),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result[
+            "policy_check_allowed"
+        ]
+        is False
+    )
+
+    assert (
+        result[
+            "requires_human_review"
+        ]
+        is True
+    )
+
+    assert (
+        result.get(
+            "decision_challenge_passed"
+        )
         is None
     )

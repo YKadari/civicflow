@@ -16,6 +16,7 @@ class IntentClassification(BaseModel):
         le=1.0,
     )
 
+
 class GroundedRecommendation(BaseModel):
     recommended_action: Literal[
         "check_payment",
@@ -29,6 +30,30 @@ class GroundedRecommendation(BaseModel):
     rationale: str
 
     cited_chunk_ids: list[str]
+
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+    )
+
+
+class DecisionChallengeResult(BaseModel):
+    verdict: Literal[
+        "pass",
+        "challenge",
+    ]
+
+    reasons: list[str] = Field(
+        default_factory=list
+    )
+
+    cited_chunk_ids: list[str] = Field(
+        default_factory=list
+    )
+
+    missing_evidence: list[str] = Field(
+        default_factory=list
+    )
 
     confidence: float = Field(
         ge=0.0,

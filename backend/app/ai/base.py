@@ -1,6 +1,7 @@
 from typing import Protocol
 
 from app.ai.models import (
+    DecisionChallengeResult,
     GroundedRecommendation,
     IntentClassification,
 )
@@ -20,4 +21,13 @@ class AIProvider(Protocol):
         facts: list[str],
         policy_evidence: list[dict],
     ) -> GroundedRecommendation:
+        ...
+
+    def challenge_decision(
+        self,
+        case_id: str,
+        proposed_action: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> DecisionChallengeResult:
         ...

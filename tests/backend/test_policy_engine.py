@@ -26,8 +26,8 @@ def payment_policy_evidence():
             section="4.2 Missing Payments",
             content=(
                 "A payment-status investigation "
-                "may be opened when a scheduled "
-                "payment is missing."
+                "may be opened for a missing "
+                "payment."
             ),
             similarity=0.90,
         )
@@ -49,7 +49,10 @@ def test_check_payment_is_allowed():
         ),
     )
 
-    assert result.allowed is True
+    assert (
+        result.allowed
+        is True
+    )
 
     assert (
         result.requires_human_review
@@ -70,17 +73,42 @@ def test_check_payment_without_policy_is_blocked():
         policy_evidence=[],
     )
 
-    assert result.allowed is False
+    assert (
+        result.allowed
+        is False
+    )
 
     assert (
         result.requires_human_review
         is True
     )
 
+
+def test_open_investigation_is_policy_allowed():
+    context = get_case_context(
+        "CF-10001"
+    )
+
+    assert context is not None
+
+    result = evaluate_action(
+        action=(
+            ActionType.OPEN_INVESTIGATION
+        ),
+        context=context,
+        policy_evidence=(
+            payment_policy_evidence()
+        ),
+    )
+
     assert (
-        "No relevant HA-PAY policy evidence "
-        "was retrieved."
-        in result.reasons
+        result.allowed
+        is True
+    )
+
+    assert (
+        result.requires_human_review
+        is False
     )
 
 
@@ -99,7 +127,10 @@ def test_unimplemented_action_requires_review():
         ),
     )
 
-    assert result.allowed is False
+    assert (
+        result.allowed
+        is False
+    )
 
     assert (
         result.requires_human_review

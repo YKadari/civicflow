@@ -1,41 +1,59 @@
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import (
+    END,
+    START,
+    StateGraph,
+)
 
-from app.agents.state import CaseAnalysisState
+from app.agents.state import (
+    CaseAnalysisState,
+)
 from app.ai.base import AIProvider
-from app.ai.exceptions import AIProviderError
+from app.ai.exceptions import (
+    AIProviderError,
+)
+from app.approvals.service import (
+    create_approval_request,
+)
 from app.database.repository import (
     get_case_context,
     get_case_request,
 )
-from app.domain.models import ActionType
-from app.policies.base import PolicyRetriever
-from app.policy_engine.engine import evaluate_action
+from app.domain.models import (
+    ActionType,
+)
+from app.policies.base import (
+    PolicyRetriever,
+)
+from app.policy_engine.engine import (
+    evaluate_action,
+)
 from app.services.analysis import (
     AI_CONFIDENCE_THRESHOLD,
     fallback_classify_intent,
 )
-from app.tools.registry import get_tool_definition
+from app.tools.registry import (
+    get_tool_definition,
+)
 
 
 def build_case_analysis_graph(
     ai_provider: AIProvider,
     policy_retriever: PolicyRetriever,
 ):
-    graph = StateGraph(CaseAnalysisState)
+    graph = StateGraph(
+        CaseAnalysisState
+    )
 
     # ========================================================
-    # Node 1: Load case context + citizen request
+    # Load
     # ========================================================
 
     def load_context_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        case_id = state["case_id"]
-        event_id = state["event_id"]
-
         context = get_case_context(
-            case_id
+            state["case_id"]
         )
 
         if context is None:
@@ -44,8 +62,8 @@ def build_case_analysis_graph(
             }
 
         request = get_case_request(
-            case_id=case_id,
-            event_id=event_id,
+            case_id=state["case_id"],
+            event_id=state["event_id"],
         )
 
         if request is None:
@@ -55,20 +73,19 @@ def build_case_analysis_graph(
 
         return {
             "context": context,
-            "description": request.description or "",
+            "description": (
+                request.description or ""
+            ),
         }
 
     # ========================================================
-    # Node 2: Classify request
+    # Classification
     # ========================================================
 
     def classify_intent_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        # Defensive check.
-        # Normally routing prevents this node from running
-        # when an earlier node produced an error.
         if state.get("error"):
             return {}
 
@@ -86,7 +103,8 @@ def build_case_analysis_graph(
 
         try:
             classification = (
-                ai_provider.classify_intent(
+                ai_provider
+                .classify_intent(
                     description
                 )
             )
@@ -122,7 +140,7 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 3: Retrieve policy
+    # Policy retrieval
     # ========================================================
 
     def retrieve_policy_node(
@@ -132,29 +150,37 @@ def build_case_analysis_graph(
         if state.get("error"):
             return {}
 
-        description = state.get("description")
-        request_type = state.get("request_type")
+        description = state.get(
+            "description"
+        )
 
-        if description is None:
-            return {
-                "error": "Request description is missing",
-                "requires_human_review": True,
-            }
+        request_type = state.get(
+            "request_type"
+        )
 
-        if request_type is None:
+        if (
+            description is None
+            or request_type is None
+        ):
             return {
-                "error": "Request type is missing",
+                "error": (
+                    "Analysis state is incomplete."
+                ),
                 "requires_human_review": True,
             }
 
         policy_query = (
-            f"Citizen request: {description}\n"
-            f"Request type: {request_type}"
+            f"Citizen request: "
+            f"{description}\n"
+            f"Request type: "
+            f"{request_type}"
         )
 
-        evidence = policy_retriever.retrieve(
-            query=policy_query,
-            limit=3,
+        evidence = (
+            policy_retriever.retrieve(
+                query=policy_query,
+                limit=3,
+            )
         )
 
         return {
@@ -165,17 +191,15 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 4: Build case facts
+    # Facts
     # ========================================================
 
     def build_facts_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        if state.get("error"):
-            return {}
-
         context = state["context"]
+
         request_type = state[
             "request_type"
         ]
@@ -198,6 +222,15 @@ def build_case_analysis_graph(
                     )
                 )
 
+                facts.append(
+                    (
+                        f"Payment "
+                        f"{payment.payment_id} "
+                        f"was scheduled for "
+                        f"{payment.scheduled_date}"
+                    )
+                )
+
         elif request_type == "document_issue":
             for document in context.documents:
                 facts.append(
@@ -209,8 +242,6 @@ def build_case_analysis_graph(
                     )
                 )
 
-        # Document status can matter for other
-        # request types as well.
         for document in context.documents:
             fact = (
                 f"Document "
@@ -220,35 +251,21 @@ def build_case_analysis_graph(
             )
 
             if fact not in facts:
-                facts.append(fact)
+                facts.append(
+                    fact
+                )
 
         return {
             "facts": facts,
         }
 
     # ========================================================
-    # Node 5: Generate grounded recommendation
+    # Recommendation
     # ========================================================
 
     def recommend_action_node(
         state: CaseAnalysisState,
     ) -> dict:
-
-        if state.get("error"):
-            return {}
-
-        if state.get(
-            "requires_human_review",
-            False,
-        ):
-            return {
-                "recommended_action": None,
-            }
-
-        policy_evidence = state.get(
-            "policy_evidence",
-            [],
-        )
 
         policy_payload = [
             {
@@ -265,17 +282,24 @@ def build_case_analysis_graph(
                     evidence.content
                 ),
             }
-            for evidence in policy_evidence
+            for evidence
+            in state.get(
+                "policy_evidence",
+                [],
+            )
         ]
 
         try:
             recommendation = (
-                ai_provider.recommend_action(
+                ai_provider
+                .recommend_action(
                     case_id=state[
                         "case_id"
                     ],
                     request_description=(
-                        state["description"]
+                        state[
+                            "description"
+                        ]
                     ),
                     facts=state["facts"],
                     policy_evidence=(
@@ -308,31 +332,26 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 6: Validate AI recommendation
+    # Recommendation validation
     # ========================================================
 
     def validate_recommendation_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        if state.get("error"):
-            return {}
-
-        policy_evidence = state.get(
-            "policy_evidence",
-            [],
-        )
+        valid_chunk_ids = {
+            evidence.chunk_id
+            for evidence
+            in state.get(
+                "policy_evidence",
+                [],
+            )
+        }
 
         cited_chunks = state.get(
             "cited_policy_chunks",
             [],
         )
-
-        valid_chunk_ids = {
-            evidence.chunk_id
-            for evidence
-            in policy_evidence
-        }
 
         invalid_citations = [
             chunk_id
@@ -379,15 +398,12 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 7: Deterministic policy check
+    # Deterministic policy check
     # ========================================================
 
     def deterministic_policy_check_node(
         state: CaseAnalysisState,
     ) -> dict:
-
-        if state.get("error"):
-            return {}
 
         action_value = state.get(
             "recommended_action"
@@ -399,31 +415,16 @@ def build_case_analysis_graph(
                 "policy_check_reasons": [
                     (
                         "No valid action was "
-                        "available for deterministic "
+                        "available for policy "
                         "evaluation."
                     )
                 ],
                 "requires_human_review": True,
             }
 
-        try:
-            action = ActionType(
-                action_value
-            )
-
-        except ValueError:
-            return {
-                "policy_check_allowed": False,
-                "policy_check_reasons": [
-                    (
-                        "The recommended action "
-                        "is not a valid CivicFlow "
-                        "action."
-                    )
-                ],
-                "recommended_action": None,
-                "requires_human_review": True,
-            }
+        action = ActionType(
+            action_value
+        )
 
         result = evaluate_action(
             action=action,
@@ -453,15 +454,210 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 8: Execute approved tool
+    # Decision Challenge
+    # ========================================================
+
+    def decision_challenge_node(
+        state: CaseAnalysisState,
+    ) -> dict:
+
+        action_value = state.get(
+            "recommended_action"
+        )
+
+        if action_value is None:
+            return {
+                "decision_challenge_passed": False,
+                "challenge_verdict": "challenge",
+                "challenge_reasons": [
+                    (
+                        "No proposed action was "
+                        "available for challenge."
+                    )
+                ],
+                "challenge_cited_policy_chunks": [],
+                "challenge_missing_evidence": [],
+                "challenged_action": None,
+                "requires_human_review": True,
+            }
+
+        policy_payload = [
+            {
+                "chunk_id": (
+                    evidence.chunk_id
+                ),
+                "policy_id": (
+                    evidence.policy_id
+                ),
+                "section": (
+                    evidence.section
+                ),
+                "content": (
+                    evidence.content
+                ),
+            }
+            for evidence
+            in state.get(
+                "policy_evidence",
+                [],
+            )
+        ]
+
+        try:
+            challenge = (
+                ai_provider
+                .challenge_decision(
+                    case_id=state[
+                        "case_id"
+                    ],
+                    proposed_action=(
+                        action_value
+                    ),
+                    facts=state[
+                        "facts"
+                    ],
+                    policy_evidence=(
+                        policy_payload
+                    ),
+                )
+            )
+
+        except AIProviderError:
+            return {
+                "decision_challenge_passed": False,
+                "challenge_verdict": "challenge",
+                "challenge_reasons": [
+                    (
+                        "Decision Challenge could "
+                        "not be completed reliably."
+                    )
+                ],
+                "challenge_cited_policy_chunks": [],
+                "challenge_missing_evidence": [],
+                "challenged_action": (
+                    action_value
+                ),
+                "requires_human_review": True,
+            }
+
+        valid_chunk_ids = {
+            evidence.chunk_id
+            for evidence
+            in state.get(
+                "policy_evidence",
+                [],
+            )
+        }
+
+        invalid_citations = [
+            chunk_id
+            for chunk_id
+            in challenge.cited_chunk_ids
+            if chunk_id
+            not in valid_chunk_ids
+        ]
+
+        if invalid_citations:
+            return {
+                "decision_challenge_passed": False,
+                "challenge_verdict": "challenge",
+                "challenge_reasons": [
+                    (
+                        "The Decision Challenge "
+                        "cited policy evidence that "
+                        "was not retrieved."
+                    )
+                ],
+                "challenge_confidence": (
+                    challenge.confidence
+                ),
+                "challenge_cited_policy_chunks": (
+                    list(
+                        challenge
+                        .cited_chunk_ids
+                    )
+                ),
+                "challenge_missing_evidence": (
+                    list(
+                        challenge
+                        .missing_evidence
+                    )
+                ),
+                "challenged_action": (
+                    action_value
+                ),
+                "requires_human_review": True,
+            }
+
+        if (
+            challenge.verdict
+            == "challenge"
+        ):
+            return {
+                "decision_challenge_passed": False,
+                "challenge_verdict": (
+                    challenge.verdict
+                ),
+                "challenge_reasons": list(
+                    challenge.reasons
+                ),
+                "challenge_confidence": (
+                    challenge.confidence
+                ),
+                "challenge_cited_policy_chunks": (
+                    list(
+                        challenge
+                        .cited_chunk_ids
+                    )
+                ),
+                "challenge_missing_evidence": (
+                    list(
+                        challenge
+                        .missing_evidence
+                    )
+                ),
+                "challenged_action": (
+                    action_value
+                ),
+                "requires_human_review": True,
+            }
+
+        return {
+            "decision_challenge_passed": True,
+            "challenge_verdict": (
+                challenge.verdict
+            ),
+            "challenge_reasons": list(
+                challenge.reasons
+            ),
+            "challenge_confidence": (
+                challenge.confidence
+            ),
+            "challenge_cited_policy_chunks": (
+                list(
+                    challenge
+                    .cited_chunk_ids
+                )
+            ),
+            "challenge_missing_evidence": (
+                list(
+                    challenge
+                    .missing_evidence
+                )
+            ),
+            "challenged_action": (
+                action_value
+            ),
+            "requires_human_review": False,
+        }
+
+    # ========================================================
+    # Tool gate / execution
     # ========================================================
 
     def execute_tool_node(
         state: CaseAnalysisState,
     ) -> dict:
-
-        if state.get("error"):
-            return {}
 
         action_value = state.get(
             "recommended_action"
@@ -473,16 +669,9 @@ def build_case_analysis_graph(
                 "requires_human_review": True,
             }
 
-        try:
-            action = ActionType(
-                action_value
-            )
-
-        except ValueError:
-            return {
-                "executed_tool": None,
-                "requires_human_review": True,
-            }
+        action = ActionType(
+            action_value
+        )
 
         tool = get_tool_definition(
             action
@@ -494,14 +683,26 @@ def build_case_analysis_graph(
                 "requires_human_review": True,
             }
 
-        # State-changing tools cannot execute
-        # automatically.
         if tool.requires_approval:
+            approval = (
+                create_approval_request(
+                    case_id=state[
+                        "case_id"
+                    ],
+                    action_type=(
+                        action.value
+                    ),
+                )
+            )
+
             return {
                 "tool_access_mode": (
                     tool.access_mode
                 ),
                 "tool_requires_approval": True,
+                "approval_request": (
+                    approval
+                ),
                 "executed_tool": None,
                 "requires_human_review": True,
             }
@@ -518,27 +719,10 @@ def build_case_analysis_graph(
                 "requires_human_review": True,
             }
 
-        # CHECK_PAYMENT is currently our only
-        # executable read-only tool.
         if action == ActionType.CHECK_PAYMENT:
             result = tool.handler(
                 state["case_id"]
             )
-
-            if not result.success:
-                return {
-                    "tool_access_mode": (
-                        tool.access_mode
-                    ),
-                    "tool_requires_approval": False,
-                    "executed_tool": (
-                        tool.name
-                    ),
-                    "payment_check_result": (
-                        result
-                    ),
-                    "requires_human_review": True,
-                }
 
             return {
                 "tool_access_mode": (
@@ -548,8 +732,12 @@ def build_case_analysis_graph(
                 "executed_tool": (
                     tool.name
                 ),
-                "payment_check_result": result,
-                "requires_human_review": False,
+                "payment_check_result": (
+                    result
+                ),
+                "requires_human_review": (
+                    not result.success
+                ),
             }
 
         return {
@@ -558,7 +746,7 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Node 9: Human review
+    # Human review
     # ========================================================
 
     def human_review_node(
@@ -571,7 +759,7 @@ def build_case_analysis_graph(
         }
 
     # ========================================================
-    # Routing functions
+    # Routing
     # ========================================================
 
     def route_after_load(
@@ -644,6 +832,43 @@ def build_case_analysis_graph(
         ):
             return "human_review"
 
+        action_value = state.get(
+            "recommended_action"
+        )
+
+        if action_value is None:
+            return "human_review"
+
+        try:
+            action = ActionType(
+                action_value
+            )
+
+        except ValueError:
+            return "human_review"
+
+        tool = get_tool_definition(
+            action
+        )
+
+        if tool is None:
+            return "human_review"
+
+        if tool.requires_approval:
+            return "challenge"
+
+        return "execute_tool"
+
+    def route_after_challenge(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
         return "execute_tool"
 
     def route_after_tool(
@@ -659,7 +884,7 @@ def build_case_analysis_graph(
         return "end"
 
     # ========================================================
-    # Register nodes
+    # Nodes
     # ========================================================
 
     graph.add_node(
@@ -698,6 +923,11 @@ def build_case_analysis_graph(
     )
 
     graph.add_node(
+        "decision_challenge",
+        decision_challenge_node,
+    )
+
+    graph.add_node(
         "execute_tool",
         execute_tool_node,
     )
@@ -708,7 +938,7 @@ def build_case_analysis_graph(
     )
 
     # ========================================================
-    # Connect graph
+    # Edges
     # ========================================================
 
     graph.add_edge(
@@ -716,11 +946,6 @@ def build_case_analysis_graph(
         "load_context",
     )
 
-    # IMPORTANT:
-    # There must NOT be a normal direct edge from
-    # load_context -> classify_intent.
-    #
-    # This conditional edge handles missing cases/requests.
     graph.add_conditional_edges(
         "load_context",
         route_after_load,
@@ -731,12 +956,17 @@ def build_case_analysis_graph(
             "end": END,
         },
     )
+
     graph.add_conditional_edges(
         "classify_intent",
         route_after_classification,
         {
-            "human_review": "human_review",
-            "retrieve_policy": "retrieve_policy",
+            "human_review": (
+                "human_review"
+            ),
+            "retrieve_policy": (
+                "retrieve_policy"
+            ),
             "end": END,
         },
     )
@@ -788,6 +1018,22 @@ def build_case_analysis_graph(
     graph.add_conditional_edges(
         "deterministic_policy_check",
         route_after_policy_check,
+        {
+            "human_review": (
+                "human_review"
+            ),
+            "challenge": (
+                "decision_challenge"
+            ),
+            "execute_tool": (
+                "execute_tool"
+            ),
+        },
+    )
+
+    graph.add_conditional_edges(
+        "decision_challenge",
+        route_after_challenge,
         {
             "human_review": (
                 "human_review"

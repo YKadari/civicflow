@@ -1,22 +1,22 @@
 from app.agents.graph import (
     build_case_analysis_graph,
 )
-from app.ai.factory import get_ai_provider
+from app.ai.factory import (
+    get_ai_provider,
+)
 from app.policies.factory import (
     get_policy_retriever,
 )
 
 
 def main():
-    ai_provider = get_ai_provider()
-
-    policy_retriever = (
-        get_policy_retriever()
-    )
-
     graph = build_case_analysis_graph(
-        ai_provider=ai_provider,
-        policy_retriever=policy_retriever,
+        ai_provider=(
+            get_ai_provider()
+        ),
+        policy_retriever=(
+            get_policy_retriever()
+        ),
     )
 
     result = graph.invoke(
@@ -27,37 +27,15 @@ def main():
     )
 
     print()
-    print("Case:")
-    print(result["case_id"])
-
-    print()
-    print("Description:")
-    print(result["description"])
-
-    print()
-    print("Request Type:")
-    print(result["request_type"])
-
-    print()
-    print("Facts:")
-
-    for fact in result["facts"]:
-        print(f"- {fact}")
-
-    print()
-    print("Policy Evidence:")
-
-    for evidence in result[
-        "policy_evidence"
-    ]:
-        print(
-            f"- {evidence.policy_id} "
-            f"{evidence.section} "
-            f"({evidence.similarity:.3f})"
+    print("REQUEST TYPE")
+    print(
+        result.get(
+            "request_type"
         )
+    )
 
     print()
-    print("Recommended Action:")
+    print("RECOMMENDED ACTION")
     print(
         result.get(
             "recommended_action"
@@ -65,31 +43,70 @@ def main():
     )
 
     print()
-    print("Rationale:")
+    print("POLICY CHECK")
     print(
         result.get(
-            "recommendation_rationale"
+            "policy_check_allowed"
         )
     )
 
     print()
-    print("Recommendation Confidence:")
+    print("DECISION CHALLENGE")
     print(
         result.get(
-            "recommendation_confidence"
+            "challenge_verdict"
         )
     )
 
     print()
-    print("Cited Policy Chunks:")
+    print("CHALLENGE REASONS")
+
+    for reason in result.get(
+        "challenge_reasons",
+        [],
+    ):
+        print(
+            f"- {reason}"
+        )
+
+    print()
+    print("MISSING EVIDENCE")
+
+    for item in result.get(
+        "challenge_missing_evidence",
+        [],
+    ):
+        print(
+            f"- {item}"
+        )
+
+    print()
+    print("APPROVAL")
+
+    approval = result.get(
+        "approval_request"
+    )
+
+    if approval is None:
+        print("None")
+    else:
+        print(
+            approval.approval_id
+        )
+        print(
+            approval.status
+        )
+
+    print()
+    print("EXECUTED TOOL")
     print(
         result.get(
-            "cited_policy_chunks"
+            "executed_tool"
         )
     )
 
     print()
-    print("Human Review:")
+    print("HUMAN REVIEW")
     print(
         result.get(
             "requires_human_review"
