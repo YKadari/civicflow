@@ -120,3 +120,11 @@ class Policy:
     version: int
     effective_date: date
     content: str
+@dataclass
+class PolicyEvidence:
+    chunk_id: str
+    policy_id: str
+    version: int
+    section: str
+    content: str
+    similarity: float
