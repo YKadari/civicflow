@@ -14,6 +14,7 @@ from app.services.analysis import (
     AI_CONFIDENCE_THRESHOLD,
     fallback_classify_intent,
 )
+from app.tools.payments import check_payment
 
 
 def build_case_analysis_graph(
@@ -370,7 +371,47 @@ def build_case_analysis_graph(
             ),
             "requires_human_review": False,
         }
+    def execute_tool_node(
+    state: CaseAnalysisState,
+    ) -> dict:
 
+        action = state.get(
+            "recommended_action"
+        )
+
+        if action == ActionType.CHECK_PAYMENT.value:
+            result = check_payment(
+                state["case_id"]
+            )
+
+            if not result.success:
+                return {
+                    "executed_tool": "check_payment",
+                    "payment_check_result": result,
+                    "requires_human_review": True,
+                }
+
+            return {
+                "executed_tool": "check_payment",
+                "payment_check_result": result,
+                "requires_human_review": False,
+            }
+
+        return {
+            "executed_tool": None,
+            "requires_human_review": True,
+        }
+    def route_after_tool(
+    state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
+        return "end"
     # ---------------------------------------------------------
     # Node 8: Human review
     # ---------------------------------------------------------
@@ -455,8 +496,7 @@ def build_case_analysis_graph(
         ):
             return "human_review"
 
-        return "end"
-
+        return "execute_tool"
     # ---------------------------------------------------------
     # Register nodes
     # ---------------------------------------------------------
@@ -499,6 +539,10 @@ def build_case_analysis_graph(
     graph.add_node(
         "human_review",
         human_review_node,
+    )
+    graph.add_node(
+        "execute_tool",
+        execute_tool_node,
     )
 
     # ---------------------------------------------------------
@@ -567,9 +611,19 @@ def build_case_analysis_graph(
         route_after_policy_check,
         {
             "human_review": "human_review",
+            "execute_tool": "execute_tool",
+        },
+    )
+
+    graph.add_conditional_edges(
+        "execute_tool",
+        route_after_tool,
+        {
+            "human_review": "human_review",
             "end": END,
         },
     )
+
 
     graph.add_edge(
         "human_review",

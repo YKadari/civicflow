@@ -303,7 +303,26 @@ def test_graph_generates_grounded_recommendation():
     assert len(
         result["policy_check_reasons"]
     ) > 0
+    assert (
+        result["executed_tool"]
+        == "check_payment"
+    )
 
+    payment_result = result[
+        "payment_check_result"
+    ]
+
+    assert payment_result.success is True
+
+    assert (
+        payment_result.case_id
+        == "CF-10001"
+    )
+
+    assert any(
+        payment.status == "missing"
+        for payment in payment_result.payments
+    )
 
 def test_graph_rejects_fake_policy_citation():
     """
@@ -441,3 +460,11 @@ def test_unimplemented_action_is_blocked_by_policy_engine():
             "policy_check_reasons"
         ]
     )
+    assert (
+        result.get("executed_tool")
+        is None
+    )
+
+
+
+    

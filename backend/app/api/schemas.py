@@ -75,7 +75,19 @@ class PolicyEvidenceResponse(BaseModel):
     content: str
     similarity: float
 
+class PaymentRecordResponse(BaseModel):
+    payment_id: str
+    amount: Decimal
+    scheduled_date: date
+    paid_date: date | None
+    status: str
 
+
+class PaymentCheckResponse(BaseModel):
+    success: bool
+    case_id: str
+    payments: list[PaymentRecordResponse]
+    message: str
 class CaseAnalysisResponse(BaseModel):
     case_id: str
     request_type: str
@@ -92,6 +104,8 @@ class CaseAnalysisResponse(BaseModel):
     policy_check_reasons: list[str] = Field(
         default_factory=list
     )
+    executed_tool: str | None = None
+    payment_check_result: PaymentCheckResponse | None = None
 
 
 class CaseContextResponse(BaseModel):

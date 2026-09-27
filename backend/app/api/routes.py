@@ -18,6 +18,8 @@ from app.api.schemas import (
     AnalyzeCaseRequest,
     CaseAnalysisResponse,
     PolicyEvidenceResponse,
+    PaymentCheckResponse,
+    PaymentRecordResponse,
 )
 from app.database.repository import (
     create_case_request,
@@ -193,7 +195,9 @@ def analyze_case(
             status_code=404,
             detail="Request not found",
         )
-
+    payment_check = result.get(
+        "payment_check_result"
+    )
     return CaseAnalysisResponse(
         case_id=result["case_id"],
         request_type=result["request_type"],
@@ -238,6 +242,31 @@ def analyze_case(
         cited_policy_chunks=result.get(
             "cited_policy_chunks",
             [],
+        ),
+        executed_tool=result.get(
+        "executed_tool"
+        ),
+
+        payment_check_result=(
+            PaymentCheckResponse(
+                success=payment_check.success,
+                case_id=payment_check.case_id,
+                payments=[
+                    PaymentRecordResponse(
+                        payment_id=payment.payment_id,
+                        amount=payment.amount,
+                        scheduled_date=(
+                            payment.scheduled_date
+                        ),
+                        paid_date=payment.paid_date,
+                        status=payment.status,
+                    )
+                    for payment in payment_check.payments
+                ],
+                message=payment_check.message,
+            )
+            if payment_check is not None
+            else None
         ),
     )
 def analyze_request(

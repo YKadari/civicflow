@@ -4,6 +4,7 @@ from app.domain.models import (
     CaseContext,
     PolicyEvidence,
 )
+from app.tools.models import PaymentCheckResult
 
 
 class CaseAnalysisState(TypedDict, total=False):
@@ -29,6 +30,9 @@ class CaseAnalysisState(TypedDict, total=False):
 
     policy_check_allowed: bool | None
     policy_check_reasons: list[str]
+
+    executed_tool: str | None
+    payment_check_result: PaymentCheckResult | None
 
     requires_human_review: bool
 
