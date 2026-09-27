@@ -11,7 +11,6 @@ class CaseAnalysisState(TypedDict, total=False):
     event_id: str
 
     context: CaseContext
-
     description: str
 
     request_type: str
@@ -27,6 +26,9 @@ class CaseAnalysisState(TypedDict, total=False):
     recommendation_confidence: float | None
 
     cited_policy_chunks: list[str]
+
+    policy_check_allowed: bool | None
+    policy_check_reasons: list[str]
 
     requires_human_review: bool
 

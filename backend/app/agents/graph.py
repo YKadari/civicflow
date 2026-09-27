@@ -9,6 +9,7 @@ from app.database.repository import (
 )
 from app.domain.models import ActionType
 from app.policies.base import PolicyRetriever
+from app.policy_engine.engine import evaluate_action
 from app.services.analysis import (
     AI_CONFIDENCE_THRESHOLD,
     fallback_classify_intent,
@@ -102,7 +103,7 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 3: Retrieve policy
+    # Node 3: Retrieve relevant policy
     # ---------------------------------------------------------
 
     def retrieve_policy_node(
@@ -129,7 +130,7 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 4: Build case facts
+    # Node 4: Build structured case facts
     # ---------------------------------------------------------
 
     def build_facts_node(
@@ -162,8 +163,8 @@ def build_case_analysis_graph(
                     f"{document.review_status}"
                 )
 
-        # Document status can still matter for other
-        # request types, especially eligibility/payment.
+        # Documents may matter for eligibility/payment
+        # even when the request is not a document issue.
         for document in context.documents:
             fact = (
                 f"Document "
@@ -238,7 +239,7 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 6: Validate AI recommendation
+    # Node 6: Validate the LLM recommendation
     # ---------------------------------------------------------
 
     def validate_recommendation_node(
@@ -302,7 +303,76 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 7: Human review
+    # Node 7: Deterministic policy check
+    # ---------------------------------------------------------
+
+    def deterministic_policy_check_node(
+        state: CaseAnalysisState,
+    ) -> dict:
+
+        action_value = state.get(
+            "recommended_action"
+        )
+
+        if action_value is None:
+            return {
+                "policy_check_allowed": False,
+                "policy_check_reasons": [
+                    (
+                        "No valid action was available "
+                        "for deterministic evaluation."
+                    )
+                ],
+                "requires_human_review": True,
+            }
+
+        try:
+            action = ActionType(
+                action_value
+            )
+
+        except ValueError:
+            return {
+                "policy_check_allowed": False,
+                "policy_check_reasons": [
+                    (
+                        "The recommended action is not "
+                        "a valid CivicFlow action."
+                    )
+                ],
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        result = evaluate_action(
+            action=action,
+            context=state["context"],
+            policy_evidence=state.get(
+                "policy_evidence",
+                [],
+            ),
+        )
+
+        if not result.allowed:
+            return {
+                "policy_check_allowed": False,
+                "policy_check_reasons": (
+                    result.reasons
+                ),
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        return {
+            "policy_check_allowed": True,
+            "policy_check_reasons": (
+                result.reasons
+            ),
+            "requires_human_review": False,
+        }
+
+    # ---------------------------------------------------------
+    # Node 8: Human review
     # ---------------------------------------------------------
 
     def human_review_node(
@@ -373,6 +443,18 @@ def build_case_analysis_graph(
         ):
             return "human_review"
 
+        return "policy_check"
+
+    def route_after_policy_check(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
         return "end"
 
     # ---------------------------------------------------------
@@ -410,12 +492,17 @@ def build_case_analysis_graph(
     )
 
     graph.add_node(
+        "deterministic_policy_check",
+        deterministic_policy_check_node,
+    )
+
+    graph.add_node(
         "human_review",
         human_review_node,
     )
 
     # ---------------------------------------------------------
-    # Graph edges
+    # Connect graph
     # ---------------------------------------------------------
 
     graph.add_edge(
@@ -467,6 +554,17 @@ def build_case_analysis_graph(
     graph.add_conditional_edges(
         "validate_recommendation",
         route_after_validation,
+        {
+            "human_review": "human_review",
+            "policy_check": (
+                "deterministic_policy_check"
+            ),
+        },
+    )
+
+    graph.add_conditional_edges(
+        "deterministic_policy_check",
+        route_after_policy_check,
         {
             "human_review": "human_review",
             "end": END,

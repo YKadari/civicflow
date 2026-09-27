@@ -2,6 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CaseResponse(BaseModel):
@@ -87,6 +88,10 @@ class CaseAnalysisResponse(BaseModel):
     recommendation_rationale: str | None = None
     recommendation_confidence: float | None = None
     cited_policy_chunks: list[str]
+    policy_check_allowed: bool | None = None
+    policy_check_reasons: list[str] = Field(
+        default_factory=list
+    )
 
 
 class CaseContextResponse(BaseModel):

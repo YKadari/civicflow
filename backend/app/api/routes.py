@@ -303,4 +303,12 @@ def analyze_request(
     cited_policy_chunks=(
         analysis.cited_policy_chunks
     ),
+    policy_check_allowed=result.get(
+        "policy_check_allowed"
+    ),
+
+    policy_check_reasons=result.get(
+        "policy_check_reasons",
+        [],
+    ),
 )
