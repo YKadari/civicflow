@@ -1,7 +1,8 @@
 from app.database.repository import get_case
 from app.domain.models import CaseStatus
 from app.database.repository import get_case, get_case_context
-
+import pytest
+pytestmark = pytest.mark.usefixtures("seeded_database")
 def test_get_case():
     case = get_case("CF-10001")
 

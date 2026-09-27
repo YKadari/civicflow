@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-
+import pytest
+pytestmark = pytest.mark.usefixtures("seeded_database")
 
 client = TestClient(app)
 
