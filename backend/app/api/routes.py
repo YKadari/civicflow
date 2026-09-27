@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
-
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+)
 from app.ai.base import AIProvider
 from app.ai.factory import get_ai_provider
 from app.api.schemas import (
@@ -22,7 +25,7 @@ from app.database.repository import (
     list_cases,
 )
 
-from app.services.analysis import analyze_case_request
+from app.agents.graph import build_case_analysis_graph
 from app.policies.base import PolicyRetriever
 from app.policies.factory import (
     get_policy_retriever,
@@ -155,6 +158,88 @@ def create_request(
     "/cases/{case_id}/analyze",
     response_model=CaseAnalysisResponse,
 )
+def analyze_case(
+    case_id: str,
+    request: AnalyzeCaseRequest,
+    ai_provider: AIProvider = Depends(
+        get_ai_provider
+    ),
+    policy_retriever: PolicyRetriever = Depends(
+        get_policy_retriever
+    ),
+):
+    graph = build_case_analysis_graph(
+        ai_provider=ai_provider,
+        policy_retriever=policy_retriever,
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": case_id,
+            "event_id": request.event_id,
+        }
+    )
+
+    error = result.get("error")
+
+    if error == "Case not found":
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found",
+        )
+
+    if error == "Request not found":
+        raise HTTPException(
+            status_code=404,
+            detail="Request not found",
+        )
+
+    return CaseAnalysisResponse(
+        case_id=result["case_id"],
+        request_type=result["request_type"],
+        facts=result.get(
+            "facts",
+            [],
+        ),
+        recommended_action=result.get(
+            "recommended_action"
+        ),
+        classification_confidence=result.get(
+            "classification_confidence"
+        ),
+        classification_source=result.get(
+            "classification_source",
+            "unknown",
+        ),
+        requires_human_review=result.get(
+            "requires_human_review",
+            True,
+        ),
+        policy_evidence=[
+            PolicyEvidenceResponse(
+                chunk_id=evidence.chunk_id,
+                policy_id=evidence.policy_id,
+                version=evidence.version,
+                section=evidence.section,
+                content=evidence.content,
+                similarity=evidence.similarity,
+            )
+            for evidence in result.get(
+                "policy_evidence",
+                [],
+            )
+        ],
+        recommendation_rationale=result.get(
+            "recommendation_rationale"
+        ),
+        recommendation_confidence=result.get(
+            "recommendation_confidence"
+        ),
+        cited_policy_chunks=result.get(
+            "cited_policy_chunks",
+            [],
+        ),
+    )
 def analyze_request(
     case_id: str,
     request: AnalyzeCaseRequest,
