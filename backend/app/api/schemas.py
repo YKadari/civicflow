@@ -58,3 +58,14 @@ class CaseContextResponse(BaseModel):
     documents: list[DocumentResponse]
     events: list[CaseEventResponse]
     approvals: list[ApprovalResponse]
+
+
+class CitizenRequestCreate(BaseModel):
+    description: str
+
+
+class CitizenRequestResponse(BaseModel):
+    event_id: str
+    event_type: str
+    description: str | None
+    created_at: datetime

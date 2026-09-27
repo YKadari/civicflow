@@ -14,6 +14,38 @@ from app.domain.models import (
     Payment,
 )
 
+from app.database.models import CaseEventModel, CaseModel
+from uuid import uuid4
+
+
+def create_case_request(
+    case_id: str,
+    description: str,
+) -> CaseEvent | None:
+    with SessionLocal() as session:
+        case_exists = session.get(CaseModel, case_id)
+
+        if case_exists is None:
+            return None
+
+        event = CaseEventModel(
+            event_id=f"EVT-{uuid4().hex[:12].upper()}",
+            case_id=case_id,
+            event_type="citizen_request",
+            description=description,
+        )
+
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+
+        return CaseEvent(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            description=event.description,
+            created_at=event.created_at,
+        )
+    
 def get_case(case_id: str) -> Case | None:
     with SessionLocal() as session:
         statement = select(CaseModel).where(
@@ -123,3 +155,38 @@ def get_case_context(case_id: str) -> CaseContext | None:
             events=events,
             approvals=approvals,
         )
+
+
+def list_cases(
+    status: str | None = None,
+    program: str | None = None,
+) -> list[Case]:
+    with SessionLocal() as session:
+        statement = select(CaseModel)
+
+        if status is not None:
+            statement = statement.where(
+                CaseModel.status == status
+            )
+
+        if program is not None:
+            statement = statement.where(
+                CaseModel.program == program
+            )
+
+        statement = statement.order_by(CaseModel.case_id)
+
+        result = session.execute(statement)
+
+        db_cases = result.scalars().all()
+
+        return [
+            Case(
+                case_id=db_case.case_id,
+                program=db_case.program,
+                status=CaseStatus(db_case.status),
+                citizen_id=db_case.citizen_id,
+                created_at=db_case.opened_at,
+            )
+            for db_case in db_cases
+        ]

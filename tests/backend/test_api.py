@@ -43,3 +43,55 @@ def test_get_case_not_found():
     assert response.json() == {
         "detail": "Case not found"
     }
+
+
+def test_list_cases():
+    response = client.get("/cases")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) >= 3
+
+
+def test_filter_active_cases():
+    response = client.get("/cases?status=active")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert len(data) >= 1
+
+    for case in data:
+        assert case["status"] == "active"
+
+def test_create_case_request():
+    response = client.post(
+        "/cases/CF-10001/requests",
+        json={
+            "description": "Testing a new citizen request."
+        },
+    )
+
+    assert response.status_code == 201
+
+    data = response.json()
+
+    assert data["event_type"] == "citizen_request"
+
+    assert data["description"] == (
+        "Testing a new citizen request."
+    )
+
+
+def test_create_request_case_not_found():
+    response = client.post(
+        "/cases/CF-99999/requests",
+        json={
+            "description": "This should not work."
+        },
+    )
+
+    assert response.status_code == 404

@@ -8,9 +8,14 @@ from app.api.schemas import (
     CitizenResponse,
     DocumentResponse,
     PaymentResponse,
+    CitizenRequestCreate,
+    CitizenRequestResponse,
 )
-from app.database.repository import get_case_context
-
+from app.database.repository import (
+    create_case_request,
+    get_case_context,
+    list_cases,
+)
 
 router = APIRouter()
 
@@ -82,4 +87,55 @@ def read_case(case_id: str):
             )
             for approval in context.approvals
         ],
+    )
+
+@router.get(
+    "/cases",
+    response_model=list[CaseResponse],
+)
+def read_cases(
+    status: str | None = None,
+    program: str | None = None,
+):
+    cases = list_cases(
+        status=status,
+        program=program,
+    )
+
+    return [
+        CaseResponse(
+            case_id=case.case_id,
+            program=case.program,
+            status=case.status.value,
+            citizen_id=case.citizen_id,
+            created_at=case.created_at,
+        )
+        for case in cases
+    ]
+
+@router.post(
+    "/cases/{case_id}/requests",
+    response_model=CitizenRequestResponse,
+    status_code=201,
+)
+def create_request(
+    case_id: str,
+    request: CitizenRequestCreate,
+):
+    event = create_case_request(
+        case_id=case_id,
+        description=request.description,
+    )
+
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Case not found",
+        )
+
+    return CitizenRequestResponse(
+        event_id=event.event_id,
+        event_type=event.event_type,
+        description=event.description,
+        created_at=event.created_at,
     )
