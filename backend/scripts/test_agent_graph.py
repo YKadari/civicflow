@@ -2,13 +2,20 @@ from app.agents.graph import (
     build_case_analysis_graph,
 )
 from app.ai.factory import get_ai_provider
+from app.policies.factory import (
+    get_policy_retriever,
+)
 
 
 def main():
     ai_provider = get_ai_provider()
+    policy_retriever = (
+        get_policy_retriever()
+    )
 
     graph = build_case_analysis_graph(
         ai_provider=ai_provider,
+        policy_retriever=policy_retriever,
     )
 
     result = graph.invoke(
@@ -31,7 +38,7 @@ def main():
     print(result["request_type"])
 
     print()
-    print("Confidence:")
+    print("Classification Confidence:")
     print(
         result[
             "classification_confidence"
@@ -39,12 +46,22 @@ def main():
     )
 
     print()
-    print("Source:")
-    print(
-        result[
-            "classification_source"
-        ]
-    )
+    print("Facts:")
+
+    for fact in result["facts"]:
+        print(f"- {fact}")
+
+    print()
+    print("Policy Evidence:")
+
+    for evidence in result[
+        "policy_evidence"
+    ]:
+        print(
+            f"- {evidence.policy_id} "
+            f"{evidence.section} "
+            f"({evidence.similarity:.3f})"
+        )
 
     print()
     print("Human Review:")
