@@ -69,6 +69,10 @@ from app.replay.service import (
     replay_case,
 )
 
+from app.evaluation.runner import (
+    evaluation_report_to_dict,
+    run_evaluation,
+)
 
 router = APIRouter()
 
@@ -851,4 +855,21 @@ def run_policy_replay_batch(
             for replay
             in result.results
         ],
+    )
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+
+@router.get(
+    "/evaluation",
+)
+def get_evaluation():
+    report = run_evaluation(
+        seed_dataset=True
+    )
+
+    return evaluation_report_to_dict(
+        report
     )
