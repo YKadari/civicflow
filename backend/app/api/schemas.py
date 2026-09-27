@@ -84,6 +84,9 @@ class CaseAnalysisResponse(BaseModel):
     classification_source: str
     requires_human_review: bool
     policy_evidence: list[PolicyEvidenceResponse]
+    recommendation_rationale: str | None = None
+    recommendation_confidence: float | None = None
+    cited_policy_chunks: list[str]
 
 
 class CaseContextResponse(BaseModel):

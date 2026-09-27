@@ -123,6 +123,11 @@ class CaseAnalysis:
     policy_evidence: list[PolicyEvidence] = field(
         default_factory=list
     )
+    recommendation_rationale: str | None = None
+    recommendation_confidence: float | None = None
+    cited_policy_chunks: list[str] = field(
+        default_factory=list
+    )
 
 @dataclass
 class Policy:

@@ -4,8 +4,10 @@ from app.main import app
 import pytest
 
 from app.ai.factory import get_ai_provider
-from app.ai.models import IntentClassification
-
+from app.ai.models import (
+    GroundedRecommendation,
+    IntentClassification,
+)
 from app.domain.models import PolicyEvidence
 from app.policies.factory import (
     get_policy_retriever,
@@ -50,7 +52,25 @@ class FakeAIProvider:
             confidence=0.99,
         )
 
+    def recommend_action(
+        self,
+        case_id: str,
+        request_description: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> GroundedRecommendation:
 
+        return GroundedRecommendation(
+            recommended_action="check_payment",
+            rationale=(
+                "The payment is marked missing and "
+                "the payment policy applies."
+            ),
+            cited_chunk_ids=[
+                "HA-PAY-V1-4_2"
+            ],
+            confidence=0.95,
+        )
 def override_ai_provider():
     return FakeAIProvider()
 

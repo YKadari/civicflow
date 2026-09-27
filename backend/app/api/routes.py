@@ -207,4 +207,15 @@ def analyze_request(
     requires_human_review=(
         analysis.requires_human_review
     ),
+    recommendation_rationale=(
+    analysis.recommendation_rationale
+    ),
+
+    recommendation_confidence=(
+        analysis.recommendation_confidence
+    ),
+
+    cited_policy_chunks=(
+        analysis.cited_policy_chunks
+    ),
 )
