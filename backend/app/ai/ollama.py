@@ -5,7 +5,9 @@ import httpx
 from dotenv import load_dotenv
 
 from app.ai.models import IntentClassification
+from pydantic import ValidationError
 
+from app.ai.exceptions import AIProviderError
 
 load_dotenv()
 
@@ -32,12 +34,12 @@ class OllamaProvider:
             )
         )
 
-    def classify_intent(
-        self,
-        description: str,
-    ) -> IntentClassification:
+def classify_intent(
+    self,
+    description: str,
+) -> IntentClassification:
 
-        prompt = f"""
+    prompt = f"""
 You classify citizen requests for a public-service
 case-management system.
 
@@ -60,6 +62,7 @@ Citizen request:
 {description}
 """.strip()
 
+    try:
         response = httpx.post(
             f"{self.base_url}/api/chat",
             json={
@@ -90,3 +93,14 @@ Citizen request:
         return IntentClassification.model_validate(
             parsed
         )
+
+    except (
+        httpx.HTTPError,
+        json.JSONDecodeError,
+        KeyError,
+        ValidationError,
+    ) as exc:
+
+        raise AIProviderError(
+            "Ollama failed to return a valid classification."
+        ) from exc

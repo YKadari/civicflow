@@ -120,3 +120,5 @@ class CaseAnalysis:
     facts: list[str]
     recommended_action: ActionType | None
     classification_confidence: float | None = None
+    classification_source: str = "ai"
+    requires_human_review: bool = False

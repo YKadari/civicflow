@@ -79,4 +79,8 @@ class CaseAnalysisResponse(BaseModel):
     request_type: str
     facts: list[str]
     recommended_action: str | None
+
     classification_confidence: float | None = None
+    classification_source: str
+
+    requires_human_review: bool

@@ -170,15 +170,21 @@ def analyze_request(
         )
 
     return CaseAnalysisResponse(
-        case_id=analysis.case_id,
-        request_type=analysis.request_type,
-        facts=analysis.facts,
-        recommended_action=(
-            analysis.recommended_action.value
-            if analysis.recommended_action
-            else None
-        ),
-        classification_confidence=(
-            analysis.classification_confidence
-        ),
-    )
+    case_id=analysis.case_id,
+    request_type=analysis.request_type,
+    facts=analysis.facts,
+    recommended_action=(
+        analysis.recommended_action.value
+        if analysis.recommended_action
+        else None
+    ),
+    classification_confidence=(
+        analysis.classification_confidence
+    ),
+    classification_source=(
+        analysis.classification_source
+    ),
+    requires_human_review=(
+        analysis.requires_human_review
+    ),
+)
