@@ -1,14 +1,15 @@
-from app.ai.ollama import classify_intent
+from app.ai.ollama import OllamaProvider
 
 
 def main():
+    provider = OllamaProvider()
+
     requests = [
         "My September housing payment has not arrived.",
 
         (
-            "I was supposed to receive $850 at the "
-            "beginning of the month, but nothing has "
-            "appeared in my account."
+            "I was supposed to receive $850 at the beginning "
+            "of the month, but nothing has appeared in my account."
         ),
 
         "I uploaded my income verification yesterday.",
@@ -19,7 +20,7 @@ def main():
     ]
 
     for description in requests:
-        result = classify_intent(description)
+        result = provider.classify_intent(description)
 
         print()
         print("Request:")

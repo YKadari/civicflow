@@ -1,42 +1,43 @@
 import json
 import os
-from typing import Literal
 
 import httpx
 from dotenv import load_dotenv
-from pydantic import BaseModel
+
+from app.ai.models import IntentClassification
 
 
 load_dotenv()
 
 
-OLLAMA_BASE_URL = os.getenv(
-    "OLLAMA_BASE_URL",
-    "http://localhost:11434",
-)
+class OllamaProvider:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str | None = None,
+    ):
+        self.base_url = (
+            base_url
+            or os.getenv(
+                "OLLAMA_BASE_URL",
+                "http://localhost:11434",
+            )
+        )
 
-OLLAMA_MODEL = os.getenv(
-    "OLLAMA_MODEL",
-    "qwen2.5:3b",
-)
+        self.model = (
+            model
+            or os.getenv(
+                "OLLAMA_MODEL",
+                "qwen2.5:3b",
+            )
+        )
 
+    def classify_intent(
+        self,
+        description: str,
+    ) -> IntentClassification:
 
-class IntentClassification(BaseModel):
-    request_type: Literal[
-        "payment_issue",
-        "document_issue",
-        "contact_update",
-        "general_inquiry",
-    ]
-
-    confidence: float
-
-
-def classify_intent(
-    description: str,
-) -> IntentClassification:
-
-    prompt = f"""
+        prompt = f"""
 You classify citizen requests for a public-service
 case-management system.
 
@@ -59,31 +60,33 @@ Citizen request:
 {description}
 """.strip()
 
-    response = httpx.post(
-        f"{OLLAMA_BASE_URL}/api/chat",
-        json={
-            "model": OLLAMA_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            "format": "json",
-            "stream": False,
-            "options": {
-                "temperature": 0,
+        response = httpx.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    }
+                ],
+                "format": "json",
+                "stream": False,
+                "options": {
+                    "temperature": 0,
+                },
             },
-        },
-        timeout=60.0,
-    )
+            timeout=60.0,
+        )
 
-    response.raise_for_status()
+        response.raise_for_status()
 
-    response_data = response.json()
+        response_data = response.json()
 
-    content = response_data["message"]["content"]
+        content = response_data["message"]["content"]
 
-    parsed = json.loads(content)
+        parsed = json.loads(content)
 
-    return IntentClassification.model_validate(parsed)
+        return IntentClassification.model_validate(
+            parsed
+        )

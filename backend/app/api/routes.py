@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.ai.base import AIProvider
+from app.ai.factory import get_ai_provider
 from app.api.schemas import (
     ApprovalResponse,
     CaseContextResponse,
@@ -151,10 +153,14 @@ def create_request(
 def analyze_request(
     case_id: str,
     request: AnalyzeCaseRequest,
+    ai_provider: AIProvider = Depends(
+        get_ai_provider
+    ),
 ):
     analysis = analyze_case_request(
         case_id=case_id,
         event_id=request.event_id,
+        ai_provider=ai_provider,
     )
 
     if analysis is None:
@@ -171,5 +177,8 @@ def analyze_request(
             analysis.recommended_action.value
             if analysis.recommended_action
             else None
+        ),
+        classification_confidence=(
+            analysis.classification_confidence
         ),
     )

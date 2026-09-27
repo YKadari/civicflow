@@ -2,11 +2,32 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 import pytest
+
+from app.ai.factory import get_ai_provider
+from app.ai.models import IntentClassification
 pytestmark = pytest.mark.usefixtures("seeded_database")
 
 client = TestClient(app)
 
+class FakeAIProvider:
+    def classify_intent(
+        self,
+        description: str,
+    ) -> IntentClassification:
 
+        return IntentClassification(
+            request_type="payment_issue",
+            confidence=0.99,
+        )
+
+
+def override_ai_provider():
+    return FakeAIProvider()
+
+
+app.dependency_overrides[get_ai_provider] = (
+    override_ai_provider
+)
 def test_health_check():
     response = client.get("/health")
 

@@ -6,11 +6,12 @@ from app.domain.models import (
     ActionType,
     CaseAnalysis,
 )
-
+from app.ai.base import AIProvider
 
 def analyze_case_request(
     case_id: str,
     event_id: str,
+    ai_provider: AIProvider,
 ) -> CaseAnalysis | None:
 
     context = get_case_context(case_id)
@@ -26,22 +27,21 @@ def analyze_case_request(
     if request is None:
         return None
 
-    description = (request.description or "").lower()
+    description = request.description or ""
+
+    classification = ai_provider.classify_intent(
+        description
+    )
+
+    request_type = classification.request_type
 
     facts = [
         f"Case status is {context.case.status.value}"
     ]
 
-    request_type = "general_inquiry"
     recommended_action = None
 
-    if (
-        "payment" in description
-        or "paid" in description
-        or "money" in description
-    ):
-        request_type = "payment_issue"
-
+    if request_type == "payment_issue":
         for payment in context.payments:
             facts.append(
                 f"Payment {payment.payment_id} "
@@ -50,12 +50,7 @@ def analyze_case_request(
 
         recommended_action = ActionType.CHECK_PAYMENT
 
-    elif (
-        "document" in description
-        or "verification" in description
-    ):
-        request_type = "document_issue"
-
+    elif request_type == "document_issue":
         for document in context.documents:
             facts.append(
                 f"Document {document.document_type} "
@@ -64,14 +59,10 @@ def analyze_case_request(
 
         recommended_action = ActionType.REQUEST_DOCUMENT
 
-    elif (
-        "address" in description
-        or "phone" in description
-        or "email" in description
-    ):
-        request_type = "contact_update"
-
-        recommended_action = ActionType.UPDATE_CONTACT_INFO
+    elif request_type == "contact_update":
+        recommended_action = (
+            ActionType.UPDATE_CONTACT_INFO
+        )
 
     for document in context.documents:
         fact = (
@@ -87,4 +78,7 @@ def analyze_case_request(
         request_type=request_type,
         facts=facts,
         recommended_action=recommended_action,
+        classification_confidence=(
+            classification.confidence
+        ),
     )

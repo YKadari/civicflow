@@ -119,3 +119,4 @@ class CaseAnalysis:
     request_type: str
     facts: list[str]
     recommended_action: ActionType | None
+    classification_confidence: float | None = None
