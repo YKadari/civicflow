@@ -37,7 +37,6 @@ def build_case_analysis_graph(
         if context is None:
             return {
                 "error": "Case not found",
-                "requires_human_review": True,
             }
 
         request = get_case_request(
@@ -48,7 +47,6 @@ def build_case_analysis_graph(
         if request is None:
             return {
                 "error": "Request not found",
-                "requires_human_review": True,
             }
 
         return {
@@ -63,9 +61,6 @@ def build_case_analysis_graph(
     def classify_intent_node(
         state: CaseAnalysisState,
     ) -> dict:
-
-        if state.get("error"):
-            return {}
 
         description = state["description"]
 
@@ -107,22 +102,18 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 3: Retrieve relevant policy
+    # Node 3: Retrieve policy
     # ---------------------------------------------------------
 
     def retrieve_policy_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        if state.get("error"):
-            return {}
-
-        description = state["description"]
-        request_type = state["request_type"]
-
         policy_query = (
-            f"Citizen request: {description}\n"
-            f"Request type: {request_type}"
+            f"Citizen request: "
+            f"{state['description']}\n"
+            f"Request type: "
+            f"{state['request_type']}"
         )
 
         evidence = policy_retriever.retrieve(
@@ -130,51 +121,55 @@ def build_case_analysis_graph(
             limit=3,
         )
 
-        result = {
+        return {
             "policy_evidence": evidence,
+            "requires_human_review": (
+                not bool(evidence)
+            ),
         }
 
-        if not evidence:
-            result["requires_human_review"] = True
-
-        return result
-
     # ---------------------------------------------------------
-    # Node 4: Build structured case facts
+    # Node 4: Build case facts
     # ---------------------------------------------------------
 
     def build_facts_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        if state.get("error"):
-            return {}
-
         context = state["context"]
         request_type = state["request_type"]
 
         facts = [
-            f"Case status is {context.case.status.value}"
+            f"Case status is "
+            f"{context.case.status.value}"
         ]
 
         if request_type == "payment_issue":
             for payment in context.payments:
                 facts.append(
-                    f"Payment {payment.payment_id} "
-                    f"is marked {payment.status}"
+                    f"Payment "
+                    f"{payment.payment_id} "
+                    f"is marked "
+                    f"{payment.status}"
                 )
 
         elif request_type == "document_issue":
             for document in context.documents:
                 facts.append(
-                    f"Document {document.document_type} "
-                    f"is {document.review_status}"
+                    f"Document "
+                    f"{document.document_type} "
+                    f"is "
+                    f"{document.review_status}"
                 )
 
+        # Document status can still matter for other
+        # request types, especially eligibility/payment.
         for document in context.documents:
             fact = (
-                f"Document {document.document_type} "
-                f"is {document.review_status}"
+                f"Document "
+                f"{document.document_type} "
+                f"is "
+                f"{document.review_status}"
             )
 
             if fact not in facts:
@@ -185,37 +180,17 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 5: Ask AI for a grounded recommendation
+    # Node 5: Generate grounded recommendation
     # ---------------------------------------------------------
 
     def recommend_action_node(
         state: CaseAnalysisState,
     ) -> dict:
 
-        if state.get("error"):
-            return {}
-
-        # If an earlier step already decided that a human
-        # must review the case, do not ask the AI to propose
-        # an automated action.
-        if state.get(
-            "requires_human_review",
-            False,
-        ):
-            return {
-                "recommended_action": None,
-            }
-
         policy_evidence = state.get(
             "policy_evidence",
             [],
         )
-
-        if not policy_evidence:
-            return {
-                "recommended_action": None,
-                "requires_human_review": True,
-            }
 
         policy_payload = [
             {
@@ -263,23 +238,12 @@ def build_case_analysis_graph(
         }
 
     # ---------------------------------------------------------
-    # Node 6: Validate recommendation
+    # Node 6: Validate AI recommendation
     # ---------------------------------------------------------
 
     def validate_recommendation_node(
         state: CaseAnalysisState,
     ) -> dict:
-
-        if state.get("error"):
-            return {}
-
-        if state.get(
-            "requires_human_review",
-            False,
-        ):
-            return {
-                "recommended_action": None,
-            }
 
         policy_evidence = state.get(
             "policy_evidence",
@@ -296,8 +260,6 @@ def build_case_analysis_graph(
             for evidence in policy_evidence
         }
 
-        # Check that every citation actually came from
-        # the retrieved policy evidence.
         invalid_citations = [
             chunk_id
             for chunk_id in cited_chunks
@@ -314,21 +276,15 @@ def build_case_analysis_graph(
             "recommended_action"
         )
 
-        if recommendation is None:
-            return {
-                "requires_human_review": True,
-            }
-
-        # "none" is a valid AI response meaning:
-        # there is not enough evidence for an action.
-        if recommendation == "none":
+        if (
+            recommendation is None
+            or recommendation == "none"
+        ):
             return {
                 "recommended_action": None,
                 "requires_human_review": True,
             }
 
-        # Ensure the recommendation maps to an actual
-        # CivicFlow ActionType.
         try:
             action = ActionType(
                 recommendation
@@ -342,7 +298,82 @@ def build_case_analysis_graph(
 
         return {
             "recommended_action": action.value,
+            "requires_human_review": False,
         }
+
+    # ---------------------------------------------------------
+    # Node 7: Human review
+    # ---------------------------------------------------------
+
+    def human_review_node(
+        state: CaseAnalysisState,
+    ) -> dict:
+
+        return {
+            "recommended_action": None,
+            "requires_human_review": True,
+        }
+
+    # ---------------------------------------------------------
+    # Routing functions
+    # ---------------------------------------------------------
+
+    def route_after_load(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get("error"):
+            return "end"
+
+        return "classify"
+
+    def route_after_classification(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
+        return "retrieve_policy"
+
+    def route_after_policy(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
+        return "build_facts"
+
+    def route_after_recommendation(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
+        return "validate"
+
+    def route_after_validation(
+        state: CaseAnalysisState,
+    ) -> str:
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return "human_review"
+
+        return "end"
 
     # ---------------------------------------------------------
     # Register nodes
@@ -378,8 +409,13 @@ def build_case_analysis_graph(
         validate_recommendation_node,
     )
 
+    graph.add_node(
+        "human_review",
+        human_review_node,
+    )
+
     # ---------------------------------------------------------
-    # Connect graph
+    # Graph edges
     # ---------------------------------------------------------
 
     graph.add_edge(
@@ -387,19 +423,31 @@ def build_case_analysis_graph(
         "load_context",
     )
 
-    graph.add_edge(
+    graph.add_conditional_edges(
         "load_context",
-        "classify_intent",
+        route_after_load,
+        {
+            "classify": "classify_intent",
+            "end": END,
+        },
     )
 
-    graph.add_edge(
+    graph.add_conditional_edges(
         "classify_intent",
-        "retrieve_policy",
+        route_after_classification,
+        {
+            "human_review": "human_review",
+            "retrieve_policy": "retrieve_policy",
+        },
     )
 
-    graph.add_edge(
+    graph.add_conditional_edges(
         "retrieve_policy",
-        "build_facts",
+        route_after_policy,
+        {
+            "human_review": "human_review",
+            "build_facts": "build_facts",
+        },
     )
 
     graph.add_edge(
@@ -407,13 +455,26 @@ def build_case_analysis_graph(
         "recommend_action",
     )
 
-    graph.add_edge(
+    graph.add_conditional_edges(
         "recommend_action",
+        route_after_recommendation,
+        {
+            "human_review": "human_review",
+            "validate": "validate_recommendation",
+        },
+    )
+
+    graph.add_conditional_edges(
         "validate_recommendation",
+        route_after_validation,
+        {
+            "human_review": "human_review",
+            "end": END,
+        },
     )
 
     graph.add_edge(
-        "validate_recommendation",
+        "human_review",
         END,
     )
 

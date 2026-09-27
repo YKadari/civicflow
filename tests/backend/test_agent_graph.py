@@ -174,3 +174,82 @@ def test_graph_rejects_fake_policy_citation():
         result["recommended_action"]
         is None
     )
+
+class LowConfidenceAIProvider:
+    def classify_intent(
+        self,
+        description: str,
+    ) -> IntentClassification:
+
+        return IntentClassification(
+            request_type="payment_issue",
+            confidence=0.30,
+        )
+
+    def recommend_action(
+        self,
+        case_id: str,
+        request_description: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> GroundedRecommendation:
+
+        raise AssertionError(
+            "recommend_action should not "
+            "be called for a low-confidence case"
+        )
+
+def test_low_confidence_routes_to_human_review():
+    graph = build_case_analysis_graph(
+        ai_provider=LowConfidenceAIProvider(),
+        policy_retriever=FakePolicyRetriever(),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result["requires_human_review"]
+        is True
+    )
+
+    assert (
+        result["recommended_action"]
+        is None
+    )
+
+class EmptyPolicyRetriever:
+    def retrieve(
+        self,
+        query: str,
+        limit: int = 3,
+    ) -> list[PolicyEvidence]:
+
+        return []
+
+def test_missing_policy_routes_to_human_review():
+    graph = build_case_analysis_graph(
+        ai_provider=FakeAIProvider(),
+        policy_retriever=EmptyPolicyRetriever(),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result["requires_human_review"]
+        is True
+    )
+
+    assert (
+        result["recommended_action"]
+        is None
+    )
