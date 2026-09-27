@@ -3,7 +3,10 @@ import pytest
 from app.agents.graph import (
     build_case_analysis_graph,
 )
-from app.ai.models import IntentClassification
+from app.ai.models import (
+    GroundedRecommendation,
+    IntentClassification,
+)
 from app.domain.models import PolicyEvidence
 
 
@@ -21,6 +24,55 @@ class FakeAIProvider:
         return IntentClassification(
             request_type="payment_issue",
             confidence=0.95,
+        )
+
+    def recommend_action(
+        self,
+        case_id: str,
+        request_description: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> GroundedRecommendation:
+
+        return GroundedRecommendation(
+            recommended_action="check_payment",
+            rationale=(
+                "The payment is missing and the "
+                "retrieved payment policy applies."
+            ),
+            cited_chunk_ids=[
+                "HA-PAY-V1-4_2"
+            ],
+            confidence=0.92,
+        )
+
+
+class HallucinatingAIProvider:
+    def classify_intent(
+        self,
+        description: str,
+    ) -> IntentClassification:
+
+        return IntentClassification(
+            request_type="payment_issue",
+            confidence=0.95,
+        )
+
+    def recommend_action(
+        self,
+        case_id: str,
+        request_description: str,
+        facts: list[str],
+        policy_evidence: list[dict],
+    ) -> GroundedRecommendation:
+
+        return GroundedRecommendation(
+            recommended_action="check_payment",
+            rationale="Fake unsupported citation.",
+            cited_chunk_ids=[
+                "FAKE-POLICY-99"
+            ],
+            confidence=0.99,
         )
 
 
@@ -46,7 +98,7 @@ class FakePolicyRetriever:
         ]
 
 
-def test_graph_retrieves_policy_and_facts():
+def test_graph_generates_grounded_recommendation():
     graph = build_case_analysis_graph(
         ai_provider=FakeAIProvider(),
         policy_retriever=FakePolicyRetriever(),
@@ -74,16 +126,51 @@ def test_graph_retrieves_policy_and_facts():
         is False
     )
 
-    assert len(
-        result["policy_evidence"]
-    ) == 1
+    assert (
+        result["recommended_action"]
+        == "check_payment"
+    )
 
     assert (
-        result["policy_evidence"][0].policy_id
-        == "HA-PAY"
+        result["cited_policy_chunks"]
+        == ["HA-PAY-V1-4_2"]
+    )
+
+    assert (
+        result["recommendation_confidence"]
+        == 0.92
+    )
+
+    assert (
+        result["recommendation_rationale"]
+        is not None
     )
 
     assert (
         "Payment PAY-10001-SEP is marked missing"
         in result["facts"]
+    )
+
+
+def test_graph_rejects_fake_policy_citation():
+    graph = build_case_analysis_graph(
+        ai_provider=HallucinatingAIProvider(),
+        policy_retriever=FakePolicyRetriever(),
+    )
+
+    result = graph.invoke(
+        {
+            "case_id": "CF-10001",
+            "event_id": "EVT-10001-1",
+        }
+    )
+
+    assert (
+        result["requires_human_review"]
+        is True
+    )
+
+    assert (
+        result["recommended_action"]
+        is None
     )

@@ -9,6 +9,7 @@ from app.policies.factory import (
 
 def main():
     ai_provider = get_ai_provider()
+
     policy_retriever = (
         get_policy_retriever()
     )
@@ -38,14 +39,6 @@ def main():
     print(result["request_type"])
 
     print()
-    print("Classification Confidence:")
-    print(
-        result[
-            "classification_confidence"
-        ]
-    )
-
-    print()
     print("Facts:")
 
     for fact in result["facts"]:
@@ -64,11 +57,43 @@ def main():
         )
 
     print()
+    print("Recommended Action:")
+    print(
+        result.get(
+            "recommended_action"
+        )
+    )
+
+    print()
+    print("Rationale:")
+    print(
+        result.get(
+            "recommendation_rationale"
+        )
+    )
+
+    print()
+    print("Recommendation Confidence:")
+    print(
+        result.get(
+            "recommendation_confidence"
+        )
+    )
+
+    print()
+    print("Cited Policy Chunks:")
+    print(
+        result.get(
+            "cited_policy_chunks"
+        )
+    )
+
+    print()
     print("Human Review:")
     print(
-        result[
+        result.get(
             "requires_human_review"
-        ]
+        )
     )
 
 

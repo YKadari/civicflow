@@ -7,6 +7,7 @@ from app.database.repository import (
     get_case_context,
     get_case_request,
 )
+from app.domain.models import ActionType
 from app.policies.base import PolicyRetriever
 from app.services.analysis import (
     AI_CONFIDENCE_THRESHOLD,
@@ -133,8 +134,6 @@ def build_case_analysis_graph(
             "policy_evidence": evidence,
         }
 
-        # No policy evidence means CivicFlow should
-        # not continue toward an automated action.
         if not evidence:
             result["requires_human_review"] = True
 
@@ -172,8 +171,6 @@ def build_case_analysis_graph(
                     f"is {document.review_status}"
                 )
 
-        # Document state may matter even when the
-        # citizen's primary request is not about documents.
         for document in context.documents:
             fact = (
                 f"Document {document.document_type} "
@@ -185,6 +182,166 @@ def build_case_analysis_graph(
 
         return {
             "facts": facts,
+        }
+
+    # ---------------------------------------------------------
+    # Node 5: Ask AI for a grounded recommendation
+    # ---------------------------------------------------------
+
+    def recommend_action_node(
+        state: CaseAnalysisState,
+    ) -> dict:
+
+        if state.get("error"):
+            return {}
+
+        # If an earlier step already decided that a human
+        # must review the case, do not ask the AI to propose
+        # an automated action.
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return {
+                "recommended_action": None,
+            }
+
+        policy_evidence = state.get(
+            "policy_evidence",
+            [],
+        )
+
+        if not policy_evidence:
+            return {
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        policy_payload = [
+            {
+                "chunk_id": evidence.chunk_id,
+                "policy_id": evidence.policy_id,
+                "section": evidence.section,
+                "content": evidence.content,
+            }
+            for evidence in policy_evidence
+        ]
+
+        try:
+            recommendation = (
+                ai_provider.recommend_action(
+                    case_id=state["case_id"],
+                    request_description=(
+                        state["description"]
+                    ),
+                    facts=state["facts"],
+                    policy_evidence=(
+                        policy_payload
+                    ),
+                )
+            )
+
+        except AIProviderError:
+            return {
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        return {
+            "recommended_action": (
+                recommendation.recommended_action
+            ),
+            "recommendation_rationale": (
+                recommendation.rationale
+            ),
+            "recommendation_confidence": (
+                recommendation.confidence
+            ),
+            "cited_policy_chunks": list(
+                recommendation.cited_chunk_ids
+            ),
+        }
+
+    # ---------------------------------------------------------
+    # Node 6: Validate recommendation
+    # ---------------------------------------------------------
+
+    def validate_recommendation_node(
+        state: CaseAnalysisState,
+    ) -> dict:
+
+        if state.get("error"):
+            return {}
+
+        if state.get(
+            "requires_human_review",
+            False,
+        ):
+            return {
+                "recommended_action": None,
+            }
+
+        policy_evidence = state.get(
+            "policy_evidence",
+            [],
+        )
+
+        cited_chunks = state.get(
+            "cited_policy_chunks",
+            [],
+        )
+
+        valid_chunk_ids = {
+            evidence.chunk_id
+            for evidence in policy_evidence
+        }
+
+        # Check that every citation actually came from
+        # the retrieved policy evidence.
+        invalid_citations = [
+            chunk_id
+            for chunk_id in cited_chunks
+            if chunk_id not in valid_chunk_ids
+        ]
+
+        if invalid_citations:
+            return {
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        recommendation = state.get(
+            "recommended_action"
+        )
+
+        if recommendation is None:
+            return {
+                "requires_human_review": True,
+            }
+
+        # "none" is a valid AI response meaning:
+        # there is not enough evidence for an action.
+        if recommendation == "none":
+            return {
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        # Ensure the recommendation maps to an actual
+        # CivicFlow ActionType.
+        try:
+            action = ActionType(
+                recommendation
+            )
+
+        except ValueError:
+            return {
+                "recommended_action": None,
+                "requires_human_review": True,
+            }
+
+        return {
+            "recommended_action": action.value,
         }
 
     # ---------------------------------------------------------
@@ -209,6 +366,16 @@ def build_case_analysis_graph(
     graph.add_node(
         "build_facts",
         build_facts_node,
+    )
+
+    graph.add_node(
+        "recommend_action",
+        recommend_action_node,
+    )
+
+    graph.add_node(
+        "validate_recommendation",
+        validate_recommendation_node,
     )
 
     # ---------------------------------------------------------
@@ -237,6 +404,16 @@ def build_case_analysis_graph(
 
     graph.add_edge(
         "build_facts",
+        "recommend_action",
+    )
+
+    graph.add_edge(
+        "recommend_action",
+        "validate_recommendation",
+    )
+
+    graph.add_edge(
+        "validate_recommendation",
         END,
     )
 
