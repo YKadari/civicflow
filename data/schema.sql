@@ -91,3 +91,12 @@ CREATE TABLE audit_logs (
         FOREIGN KEY (case_id)
         REFERENCES cases(case_id)
 );
+
+CREATE TABLE policy_chunks (
+    chunk_id VARCHAR(100) PRIMARY KEY,
+    policy_id VARCHAR(50) NOT NULL,
+    version INTEGER NOT NULL,
+    section VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    embedding VECTOR(768) NOT NULL
+);

@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from pgvector.sqlalchemy import Vector
 
 from sqlalchemy import (
     Date,
@@ -257,4 +258,37 @@ class AuditLogModel(Base):
 
     case: Mapped["CaseModel"] = relationship(
         back_populates="audit_logs"
+    )
+
+
+class PolicyChunkModel(Base):
+    __tablename__ = "policy_chunks"
+
+    chunk_id: Mapped[str] = mapped_column(
+        String(100),
+        primary_key=True,
+    )
+
+    policy_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    version: Mapped[int] = mapped_column(
+        nullable=False,
+    )
+
+    section: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    content: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(768),
+        nullable=False,
     )
