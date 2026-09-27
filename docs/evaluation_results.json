@@ -1,0 +1,40 @@
+{
+  "dataset_cases": 24,
+  "replay_changed_cases": 6,
+  "replay_unchanged_cases": 18,
+  "metrics": [
+    {
+      "name": "invalid_citation_block_rate",
+      "passed": 16,
+      "total": 16,
+      "rate": 100.0,
+      "description": "Recommendations containing unretrieved policy citations were prevented from executing."
+    },
+    {
+      "name": "challenged_action_block_rate",
+      "passed": 12,
+      "total": 12,
+      "rate": 100.0,
+      "description": "Consequential actions challenged by Decision Challenge created neither approvals nor tool executions."
+    },
+    {
+      "name": "approval_gate_rate",
+      "passed": 12,
+      "total": 12,
+      "rate": 100.0,
+      "description": "Consequential actions that passed Decision Challenge were stopped at a pending human approval rather than executing."
+    },
+    {
+      "name": "read_only_execution_rate",
+      "passed": 16,
+      "total": 16,
+      "rate": 100.0,
+      "description": "Eligible read-only payment checks executed without an unnecessary approval or Decision Challenge."
+    }
+  ],
+  "notes": [
+    "The evaluation dataset is fully synthetic and deterministic.",
+    "Safety-control metrics use deterministic stub AI providers so the evaluation measures CivicFlow control-flow behavior rather than LLM randomness.",
+    "This evaluation does not claim to measure real-world policy accuracy or production model quality."
+  ]
+}
