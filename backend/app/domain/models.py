@@ -42,16 +42,6 @@ class ProposedAction:
     risk_level: RiskLevel
     requires_human_approval: bool
 
-
-@dataclass
-class PolicyVersion:
-    policy_id: str
-    title: str
-    version: int
-    effective_date: datetime
-    content: str
-
-
 @dataclass
 class AuditEvent:
     event_type: str
@@ -122,3 +112,11 @@ class CaseAnalysis:
     classification_confidence: float | None = None
     classification_source: str = "ai"
     requires_human_review: bool = False
+
+@dataclass
+class Policy:
+    policy_id: str
+    title: str
+    version: int
+    effective_date: date
+    content: str
