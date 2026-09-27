@@ -96,3 +96,31 @@ def test_create_request_case_not_found():
     )
 
     assert response.status_code == 404
+
+
+def test_analyze_payment_request():
+    response = client.post(
+        "/cases/CF-10001/analyze",
+        json={
+            "event_id": "EVT-10001-1"
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["case_id"] == "CF-10001"
+    assert data["request_type"] == "payment_issue"
+    assert data["recommended_action"] == "check_payment"
+
+
+def test_analyze_request_not_found():
+    response = client.post(
+        "/cases/CF-10001/analyze",
+        json={
+            "event_id": "EVT-DOES-NOT-EXIST"
+        },
+    )
+
+    assert response.status_code == 404

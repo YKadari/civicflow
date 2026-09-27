@@ -69,3 +69,13 @@ class CitizenRequestResponse(BaseModel):
     event_type: str
     description: str | None
     created_at: datetime
+
+class AnalyzeCaseRequest(BaseModel):
+    event_id: str
+
+
+class CaseAnalysisResponse(BaseModel):
+    case_id: str
+    request_type: str
+    facts: list[str]
+    recommended_action: str | None

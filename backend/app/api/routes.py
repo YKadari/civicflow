@@ -10,12 +10,16 @@ from app.api.schemas import (
     PaymentResponse,
     CitizenRequestCreate,
     CitizenRequestResponse,
+    AnalyzeCaseRequest,
+    CaseAnalysisResponse,
 )
 from app.database.repository import (
     create_case_request,
     get_case_context,
     list_cases,
 )
+
+from app.services.analysis import analyze_case_request
 
 router = APIRouter()
 
@@ -138,4 +142,34 @@ def create_request(
         event_type=event.event_type,
         description=event.description,
         created_at=event.created_at,
+    )
+
+@router.post(
+    "/cases/{case_id}/analyze",
+    response_model=CaseAnalysisResponse,
+)
+def analyze_request(
+    case_id: str,
+    request: AnalyzeCaseRequest,
+):
+    analysis = analyze_case_request(
+        case_id=case_id,
+        event_id=request.event_id,
+    )
+
+    if analysis is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Case or request not found",
+        )
+
+    return CaseAnalysisResponse(
+        case_id=analysis.case_id,
+        request_type=analysis.request_type,
+        facts=analysis.facts,
+        recommended_action=(
+            analysis.recommended_action.value
+            if analysis.recommended_action
+            else None
+        ),
     )

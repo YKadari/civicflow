@@ -190,3 +190,32 @@ def list_cases(
             )
             for db_case in db_cases
         ]
+
+
+def get_case_request(
+    case_id: str,
+    event_id: str,
+) -> CaseEvent | None:
+    with SessionLocal() as session:
+        statement = (
+            select(CaseEventModel)
+            .where(
+                CaseEventModel.case_id == case_id,
+                CaseEventModel.event_id == event_id,
+                CaseEventModel.event_type == "citizen_request",
+            )
+        )
+
+        result = session.execute(statement)
+
+        db_event = result.scalar_one_or_none()
+
+        if db_event is None:
+            return None
+
+        return CaseEvent(
+            event_id=db_event.event_id,
+            event_type=db_event.event_type,
+            description=db_event.description,
+            created_at=db_event.created_at,
+        )

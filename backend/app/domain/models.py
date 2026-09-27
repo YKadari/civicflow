@@ -112,3 +112,10 @@ class CaseContext:
     documents: list[Document]
     events: list[CaseEvent]
     approvals: list[Approval]
+
+@dataclass
+class CaseAnalysis:
+    case_id: str
+    request_type: str
+    facts: list[str]
+    recommended_action: ActionType | None
