@@ -58,8 +58,8 @@ class FakeAIProvider:
 
 class HallucinatingAIProvider:
     """
-    AI provider that deliberately cites a policy
-    chunk that was never retrieved.
+    Deliberately cites a policy chunk that was
+    never retrieved.
     """
 
     def classify_intent(
@@ -127,9 +127,11 @@ class LowConfidenceAIProvider:
 
 class CloseCaseAIProvider:
     """
-    AI proposes a valid CivicFlow ActionType,
-    but CLOSE_CASE does not yet have a deterministic
-    policy-engine rule.
+    AI proposes CLOSE_CASE.
+
+    It is a valid CivicFlow ActionType, but the
+    deterministic policy engine does not yet allow
+    it to proceed automatically.
     """
 
     def classify_intent(
@@ -197,8 +199,8 @@ class FakePolicyRetriever:
 
 class EmptyPolicyRetriever:
     """
-    Simulates a request for which RAG finds no
-    sufficiently relevant policy.
+    Simulates RAG finding no sufficiently
+    relevant policy evidence.
     """
 
     def retrieve(
@@ -221,11 +223,12 @@ def test_graph_generates_grounded_recommendation():
 
     classification
         -> policy retrieval
-        -> facts
+        -> fact construction
         -> AI recommendation
         -> citation validation
         -> deterministic policy check
-        -> accepted recommendation
+        -> tool registry
+        -> tool execution
     """
 
     graph = build_case_analysis_graph(
@@ -239,6 +242,10 @@ def test_graph_generates_grounded_recommendation():
             "event_id": "EVT-10001-1",
         }
     )
+
+    # --------------------------------------------------------
+    # Classification
+    # --------------------------------------------------------
 
     assert (
         result["request_type"]
@@ -260,6 +267,10 @@ def test_graph_generates_grounded_recommendation():
         is False
     )
 
+    # --------------------------------------------------------
+    # Recommendation
+    # --------------------------------------------------------
+
     assert (
         result["recommended_action"]
         == "check_payment"
@@ -280,6 +291,10 @@ def test_graph_generates_grounded_recommendation():
         is not None
     )
 
+    # --------------------------------------------------------
+    # Policy retrieval + facts
+    # --------------------------------------------------------
+
     assert len(
         result["policy_evidence"]
     ) == 1
@@ -294,7 +309,10 @@ def test_graph_generates_grounded_recommendation():
         in result["facts"]
     )
 
-    # New deterministic policy-engine checks.
+    # --------------------------------------------------------
+    # Deterministic policy engine
+    # --------------------------------------------------------
+
     assert (
         result["policy_check_allowed"]
         is True
@@ -303,6 +321,25 @@ def test_graph_generates_grounded_recommendation():
     assert len(
         result["policy_check_reasons"]
     ) > 0
+
+    # --------------------------------------------------------
+    # Tool registry
+    # --------------------------------------------------------
+
+    assert (
+        result["tool_access_mode"]
+        == "read_only"
+    )
+
+    assert (
+        result["tool_requires_approval"]
+        is False
+    )
+
+    # --------------------------------------------------------
+    # Tool execution
+    # --------------------------------------------------------
+
     assert (
         result["executed_tool"]
         == "check_payment"
@@ -312,7 +349,10 @@ def test_graph_generates_grounded_recommendation():
         "payment_check_result"
     ]
 
-    assert payment_result.success is True
+    assert (
+        payment_result.success
+        is True
+    )
 
     assert (
         payment_result.case_id
@@ -321,13 +361,15 @@ def test_graph_generates_grounded_recommendation():
 
     assert any(
         payment.status == "missing"
-        for payment in payment_result.payments
+        for payment
+        in payment_result.payments
     )
+
 
 def test_graph_rejects_fake_policy_citation():
     """
-    The LLM is not allowed to cite policy chunks
-    that were not actually retrieved.
+    The AI must not cite policy chunks that were
+    not actually retrieved.
     """
 
     graph = build_case_analysis_graph(
@@ -349,6 +391,11 @@ def test_graph_rejects_fake_policy_citation():
 
     assert (
         result["recommended_action"]
+        is None
+    )
+
+    assert (
+        result.get("executed_tool")
         is None
     )
 
@@ -381,11 +428,16 @@ def test_low_confidence_routes_to_human_review():
         is None
     )
 
+    assert (
+        result.get("executed_tool")
+        is None
+    )
+
 
 def test_missing_policy_routes_to_human_review():
     """
-    CivicFlow should not generate an automated
-    recommendation when no relevant policy was found.
+    CivicFlow should not continue to an automated
+    action when no relevant policy is retrieved.
     """
 
     graph = build_case_analysis_graph(
@@ -415,15 +467,20 @@ def test_missing_policy_routes_to_human_review():
         == []
     )
 
+    assert (
+        result.get("executed_tool")
+        is None
+    )
+
 
 def test_unimplemented_action_is_blocked_by_policy_engine():
     """
-    CLOSE_CASE is a valid ActionType, but we have
-    not yet implemented deterministic rules allowing
-    CivicFlow to automate it.
+    CLOSE_CASE is a valid ActionType, but CivicFlow
+    does not yet have a deterministic policy rule
+    permitting automated case closure.
 
-    Therefore, the deterministic policy engine must
-    block it and route the case to human review.
+    It must therefore be blocked before tool
+    execution.
     """
 
     graph = build_case_analysis_graph(
@@ -460,11 +517,10 @@ def test_unimplemented_action_is_blocked_by_policy_engine():
             "policy_check_reasons"
         ]
     )
+
+    # A blocked action must never reach
+    # tool execution.
     assert (
         result.get("executed_tool")
         is None
     )
-
-
-
-    

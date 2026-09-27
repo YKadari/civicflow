@@ -104,6 +104,8 @@ class CaseAnalysisResponse(BaseModel):
     policy_check_reasons: list[str] = Field(
         default_factory=list
     )
+    tool_access_mode: str | None = None
+    tool_requires_approval: bool | None = None
     executed_tool: str | None = None
     payment_check_result: PaymentCheckResponse | None = None
 
