@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 
+from app.api.routes import router
+
 
 app = FastAPI(
     title="CivicFlow API",
@@ -14,3 +16,6 @@ def health_check():
         "status": "ok",
         "service": "civicflow-api",
     }
+
+
+app.include_router(router)
