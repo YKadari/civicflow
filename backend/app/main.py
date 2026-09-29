@@ -30,10 +30,10 @@ if frontend_origin:
         frontend_origin.rstrip("/")
     )
 
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=local_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
