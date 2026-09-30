@@ -149,6 +149,62 @@ function percent(
 
 
 
+function evaluationMetricLabel(
+
+  name: string,
+
+): string {
+
+  const labels: Record<string, string> = {
+
+    invalid_citation_block_rate:
+      "Invalid Citation Blocking",
+
+    challenged_action_block_rate:
+      "Challenge Enforcement",
+
+    approval_gate_rate:
+      "Human Approval Gating",
+
+    read_only_execution_rate:
+      "Read-only Execution",
+
+  };
+
+  return labels[name] ?? readable(name);
+}
+
+
+
+function replayImpactSummary(
+
+  result: PolicyReplayResult,
+
+): string {
+
+  if (!result.outcome_changed) {
+
+    return `${result.case_id} keeps the same outcome under both policy versions.`;
+
+  }
+
+  if (result.change_type === "newly_blocked") {
+
+    return `${result.case_id} changes from allowed to blocked under the candidate policy.`;
+
+  }
+
+  if (result.change_type === "newly_allowed") {
+
+    return `${result.case_id} changes from blocked to allowed under the candidate policy.`;
+
+  }
+
+  return `${result.case_id} changes outcome under the candidate policy.`;
+}
+
+
+
 function StatusBadge({
 
   value,
@@ -443,9 +499,19 @@ function CasesView() {
 
 
 
+      const demoCases =
+        result.filter(
+          (item) =>
+            !item.case_id.startsWith(
+              "CF-EVAL-",
+            ),
+        );
+
+
+
       setCases(
 
-        result,
+        demoCases,
 
       );
 
@@ -455,13 +521,13 @@ function CasesView() {
 
         !selectedCaseId &&
 
-        result.length > 0
+        demoCases.length > 0
 
       ) {
 
         const preferred =
 
-          result.find(
+          demoCases.find(
 
             (item) =>
 
@@ -477,7 +543,7 @@ function CasesView() {
 
           preferred?.case_id ??
 
-            result[0].case_id,
+            demoCases[0].case_id,
 
         );
 
@@ -2305,7 +2371,12 @@ function ApprovalsView() {
 
       setApprovals(
 
-        result,
+        result.filter(
+          (approval) =>
+            !approval.case_id.startsWith(
+              "CF-EVAL-",
+            ),
+        ),
 
       );
 
@@ -2963,6 +3034,33 @@ function PolicyReplayView() {
 
 
 
+  function loadReplayDemo() {
+
+    setAction(
+      "open_investigation",
+    );
+
+    setCaseId(
+      "CF-10001",
+    );
+
+    setBaseline(1);
+
+    setCandidate(2);
+
+    setSingleResult(
+      null,
+    );
+
+    setBatchResult(
+      null,
+    );
+
+    setError(
+      null,
+    );
+  }
+
 
 
   async function runSingle() {
@@ -3117,6 +3215,17 @@ function PolicyReplayView() {
 
 
 
+  const changedRate =
+    batchResult &&
+    batchResult.total_cases > 0
+      ? Math.round(
+          (
+            batchResult.changed_cases /
+            batchResult.total_cases
+          ) * 100,
+        )
+      : 0;
+
 
 
   return (
@@ -3145,19 +3254,64 @@ function PolicyReplayView() {
 
           <p>
 
-            Re-evaluate historical
+            Compare the same case facts
 
-            cases under a different
+            under different policy versions
 
-            policy version without
-
-            rerunning the LLM.
+            without rerunning the LLM.
 
           </p>
 
         </div>
 
+
+
+        <span className="feature-badge">
+          Deterministic · No LLM
+        </span>
+
       </div>
+
+
+
+      <section className="feature-intro">
+
+        <div className="feature-intro-copy">
+
+          <div className="eyebrow">
+            RECRUITER DEMO
+          </div>
+
+          <h2>
+            See how a policy change alters a case decision
+          </h2>
+
+          <p>
+            HA-PAY v2 adds an approved address-verification
+            requirement for opening a payment investigation.
+            Replay keeps the case facts fixed so any changed
+            outcome is attributable to policy, not model drift.
+          </p>
+
+          <div className="replay-story-flow">
+            <span>HA-PAY v1</span>
+            <strong>same case facts</strong>
+            <span>HA-PAY v2</span>
+          </div>
+
+        </div>
+
+
+
+        <button
+          className="button button-secondary"
+          type="button"
+          onClick={loadReplayDemo}
+        >
+          Load recruiter demo
+        </button>
+
+      </section>
 
 
 
@@ -3329,7 +3483,7 @@ function PolicyReplayView() {
 
             <span>
 
-              Case
+              Case ID
 
             </span>
 
@@ -3381,7 +3535,9 @@ function PolicyReplayView() {
 
           >
 
-            Replay One Case
+            {busy
+              ? "Running..."
+              : "Replay One Case"}
 
           </button>
 
@@ -3401,7 +3557,9 @@ function PolicyReplayView() {
 
           >
 
-            Replay All Cases
+            {busy
+              ? "Running..."
+              : "Replay All Stored Cases"}
 
           </button>
 
@@ -3425,79 +3583,100 @@ function PolicyReplayView() {
 
       {singleResult && (
 
-        <Section title="Case Replay Result">
+        <>
 
-          <div className="replay-comparison">
+          <div
+            className={
+              singleResult.outcome_changed
+                ? "replay-impact-banner changed"
+                : "replay-impact-banner"
+            }
+          >
+            <div>
+              <span>Replay conclusion</span>
+              <strong>
+                {replayImpactSummary(
+                  singleResult,
+                )}
+              </strong>
+            </div>
 
-            <OutcomeCard
-
-              title={`HA-PAY v${singleResult.baseline.version}`}
-
-              outcome={
-
-                singleResult.baseline
-
+            <StatusBadge
+              value={
+                singleResult.outcome_changed
+                  ? singleResult.change_type
+                  : "unchanged"
               }
-
             />
+          </div>
 
 
 
-            <div className="comparison-arrow">
+          <Section title="Case Replay Result">
 
-              →
+            <div className="replay-comparison">
+
+              <OutcomeCard
+
+                title={`HA-PAY v${singleResult.baseline.version}`}
+
+                outcome={
+
+                  singleResult.baseline
+
+                }
+
+              />
+
+
+
+              <div className="comparison-arrow">
+
+                →
+
+              </div>
+
+
+
+              <OutcomeCard
+
+                title={`HA-PAY v${singleResult.candidate.version}`}
+
+                outcome={
+
+                  singleResult.candidate
+
+                }
+
+              />
 
             </div>
 
 
 
-            <OutcomeCard
+            <div className="replay-result-footer">
 
-              title={`HA-PAY v${singleResult.candidate.version}`}
-
-              outcome={
-
-                singleResult.candidate
-
-              }
-
-            />
-
-          </div>
+              <span>
+                Same facts · Different policy
+              </span>
 
 
 
-          <div className="replay-result-footer">
+              <strong>
 
-            <StatusBadge
+                {
 
-              value={
+                  singleResult.case_id
 
-                singleResult.outcome_changed
+                }
 
-                  ? singleResult.change_type
+              </strong>
 
-                  : "unchanged"
+            </div>
 
-              }
+          </Section>
 
-            />
-
-
-
-            <strong>
-
-              {
-
-                singleResult.case_id
-
-              }
-
-            </strong>
-
-          </div>
-
-        </Section>
+        </>
 
       )}
 
@@ -3507,7 +3686,7 @@ function PolicyReplayView() {
 
         <>
 
-          <div className="summary-grid">
+          <div className="summary-grid replay-summary-grid">
 
             <div className="summary-card">
 
@@ -3579,6 +3758,31 @@ function PolicyReplayView() {
 
             </div>
 
+
+
+            <div className="summary-card summary-card-accent">
+
+              <span>
+                Outcome change rate
+              </span>
+
+              <strong>
+                {changedRate}%
+              </strong>
+
+            </div>
+
+          </div>
+
+
+
+          <div className="batch-insight">
+            <strong>
+              {batchResult.changed_cases} of {batchResult.total_cases} stored cases
+            </strong>
+            <span>
+              produce a different decision under the candidate policy.
+            </span>
           </div>
 
 
@@ -3742,8 +3946,6 @@ function PolicyReplayView() {
   );
 
 }
-
-
 
 
 
@@ -3947,6 +4149,36 @@ function EvaluationView() {
 
 
 
+  const totalChecks =
+    report
+      ? report.metrics.reduce(
+          (sum, metric) =>
+            sum + metric.total,
+          0,
+        )
+      : 0;
+
+
+
+  const passedChecks =
+    report
+      ? report.metrics.reduce(
+          (sum, metric) =>
+            sum + metric.passed,
+          0,
+        )
+      : 0;
+
+
+
+  const allControlsPassed =
+    Boolean(report) &&
+    report!.metrics.length > 0 &&
+    report!.metrics.every(
+      (metric) =>
+        metric.passed === metric.total,
+    );
+
 
 
   return (
@@ -3975,13 +4207,11 @@ function EvaluationView() {
 
           <p>
 
-            Deterministic synthetic
+            Validate CivicFlow's deterministic
 
-            evaluation of CivicFlow's
+            safety and workflow controls across
 
-            policy and safety
-
-            controls.
+            designed synthetic scenarios.
 
           </p>
 
@@ -4007,11 +4237,44 @@ function EvaluationView() {
 
             ? "Running..."
 
-            : "Run Evaluation"}
+            : report
+              ? "Re-run Evaluation"
+              : "Run Evaluation"}
 
         </button>
 
       </div>
+
+
+
+      <section className="feature-intro evaluation-intro">
+
+        <div className="feature-intro-copy">
+
+          <div className="eyebrow">
+            WHAT THIS MEASURES
+          </div>
+
+          <h2>
+            Safety controls, not model accuracy
+          </h2>
+
+          <p>
+            This suite uses deterministic providers and synthetic
+            cases to verify that invalid citations are blocked,
+            challenged actions stop, consequential actions require
+            approval, and read-only actions execute safely.
+          </p>
+
+        </div>
+
+
+
+        <span className="feature-badge">
+          Synthetic · Deterministic
+        </span>
+
+      </section>
 
 
 
@@ -4047,7 +4310,30 @@ function EvaluationView() {
 
         <>
 
-          <div className="summary-grid">
+          <div
+            className={
+              allControlsPassed
+                ? "evaluation-verdict success"
+                : "evaluation-verdict"
+            }
+          >
+            <div>
+              <span>Control-suite result</span>
+              <strong>
+                {allControlsPassed
+                  ? "All configured controls passed their designed scenarios"
+                  : "Evaluation completed with control failures to review"}
+              </strong>
+            </div>
+
+            <div className="evaluation-verdict-score">
+              {passedChecks}/{totalChecks}
+            </div>
+          </div>
+
+
+
+          <div className="summary-grid evaluation-summary-grid">
 
             <div className="summary-card">
 
@@ -4101,7 +4387,7 @@ function EvaluationView() {
 
               <span>
 
-                Unchanged
+                Replay Unchanged
 
               </span>
 
@@ -4115,6 +4401,20 @@ function EvaluationView() {
 
                 }
 
+              </strong>
+
+            </div>
+
+
+
+            <div className="summary-card summary-card-accent">
+
+              <span>
+                Control checks passed
+              </span>
+
+              <strong>
+                {passedChecks}/{totalChecks}
               </strong>
 
             </div>
@@ -4149,7 +4449,7 @@ function EvaluationView() {
 
                         <span>
 
-                          {readable(
+                          {evaluationMetricLabel(
 
                             metric.name,
 
@@ -4235,21 +4535,39 @@ function EvaluationView() {
 
 
 
-          <Section title="Interpretation">
+          <Section title="Methodology & Scope">
 
-            <div className="note-box">
+            <div className="evaluation-method-grid">
 
-              These percentages measure
+              <div className="note-box">
 
-              deterministic CivicFlow
+                These percentages measure
 
-              safety-control behavior on
+                deterministic CivicFlow
 
-              designed synthetic scenarios.
+                safety-control behavior on
 
-              They do not mean the LLM is
+                designed synthetic scenarios.
 
-              100% accurate.
+                They do not mean the LLM is
+
+                100% accurate.
+
+              </div>
+
+
+
+              <div className="evaluation-method-card">
+                <span>Evaluation design</span>
+                <strong>
+                  Controlled providers isolate policy and workflow behavior
+                </strong>
+                <p>
+                  The suite deliberately exercises citation validation,
+                  Decision Challenge, approval gating, read-only execution,
+                  and policy-version replay independently of live-model variance.
+                </p>
+              </div>
 
             </div>
 
@@ -4290,8 +4608,6 @@ function EvaluationView() {
   );
 
 }
-
-
 
 
 
