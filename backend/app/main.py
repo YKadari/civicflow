@@ -16,28 +16,43 @@ app = FastAPI(
 )
 
 
-local_origins = [
+allowed_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://civicflow-wkvj.vercel.app",
 ]
 
+
+# Optional environment-configured frontend URL.
 frontend_origin = os.getenv(
     "FRONTEND_ORIGIN"
 )
 
 if frontend_origin:
-    local_origins.append(
-        frontend_origin.rstrip("/")
-    )
+    origin = frontend_origin.rstrip("/")
+
+    if origin not in allowed_origins:
+        allowed_origins.append(
+            origin
+        )
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=local_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "CivicFlow API",
+        "status": "online",
+        "docs": "/docs",
+    }
 
 
 @app.get("/health")
